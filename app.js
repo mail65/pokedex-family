@@ -373,6 +373,82 @@ function openCardmarket() {
   );
 }
 
+// ---- AUTOSUGGEST ----
+let acTimer = null;
+let acAbort = null;
+
+function closeAutocomplete() {
+  document.getElementById('autocomplete-list').classList.remove('open');
+  document.getElementById('autocomplete-list').innerHTML = '';
+}
+
+async function fetchSuggestions(q) {
+  if (q.length < 2) { closeAutocomplete(); return; }
+
+  // Debounce: 350ms nach letzter Eingabe
+  clearTimeout(acTimer);
+  acTimer = setTimeout(async () => {
+    try {
+      if (acAbort) acAbort.abort();
+      acAbort = new AbortController();
+
+      const firstWord = encodeURIComponent(q.split(' ')[0]);
+      const res = await fetch(
+        `https://api.pokemontcg.io/v2/cards?q=name:${firstWord}*&pageSize=8&select=id,name,set,images`,
+        { signal: acAbort.signal }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const cards = data.data || [];
+
+      // Clientseitig filtern falls mehrere Wörter
+      const lc = q.toLowerCase();
+      const filtered = cards.filter(c => c.name.toLowerCase().startsWith(lc));
+      const show = filtered.length ? filtered : cards;
+
+      // Duplikate nach Name entfernen
+      const seen = new Set();
+      const unique = show.filter(c => {
+        if (seen.has(c.name)) return false;
+        seen.add(c.name); return true;
+      });
+
+      renderAutocomplete(unique);
+    } catch(e) {
+      if (e.name !== 'AbortError') closeAutocomplete();
+    }
+  }, 350);
+}
+
+function renderAutocomplete(cards) {
+  const list = document.getElementById('autocomplete-list');
+  if (!cards.length) { closeAutocomplete(); return; }
+
+  list.innerHTML = '';
+  cards.forEach(card => {
+    const item = document.createElement('div');
+    item.className = 'ac-item';
+
+    const img = document.createElement('img');
+    img.className = 'ac-img';
+    img.src = card.images?.small || '';
+    img.alt = card.name;
+
+    const info = document.createElement('div');
+    info.innerHTML = `<div class="ac-name">${esc(card.name)}</div><div class="ac-set">${esc(card.set?.name || '')}</div>`;
+
+    item.appendChild(img);
+    item.appendChild(info);
+    item.addEventListener('click', () => {
+      document.getElementById('search-input').value = card.name;
+      closeAutocomplete();
+      doSearch(card.name);
+    });
+    list.appendChild(item);
+  });
+  list.classList.add('open');
+}
+
 // ---- INIT ----
 document.addEventListener('DOMContentLoaded', async () => {
   await updateCounts();
@@ -386,9 +462,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-add').addEventListener('click',         addCard);
   document.getElementById('btn-cm').addEventListener('click',          openCardmarket);
 
-  document.getElementById('btn-search').addEventListener('click', () => doSearch());
-  document.getElementById('search-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') doSearch();
+  // Schnellsuche
+  document.getElementById('qs-pikachu').addEventListener('click',   () => quickSearch('Pikachu'));
+  document.getElementById('qs-charizard').addEventListener('click', () => quickSearch('Charizard'));
+  document.getElementById('qs-mewtwo').addEventListener('click',    () => quickSearch('Mewtwo'));
+  document.getElementById('qs-eevee').addEventListener('click',     () => quickSearch('Eevee'));
+
+  // Suche
+  document.getElementById('btn-search').addEventListener('click', () => { closeAutocomplete(); doSearch(); });
+
+  const input = document.getElementById('search-input');
+  input.addEventListener('input', e => fetchSuggestions(e.target.value.trim()));
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { closeAutocomplete(); doSearch(); }
+    if (e.key === 'Escape') closeAutocomplete();
+  });
+
+  // Klick außerhalb schließt Autosuggest
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.search-wrap')) closeAutocomplete();
   });
 
   if ('serviceWorker' in navigator) {

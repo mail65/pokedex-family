@@ -48,21 +48,24 @@
   </header>
 
   <div class="content" id="content-search">
-    <!-- Suchfeld -->
+    <!-- Suchfeld + Autosuggest -->
     <div class="search-bar">
-      <input type="text" id="search-input" class="search-input"
-        placeholder="Pokémon-Name eingeben…"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <div class="search-wrap">
+        <input type="text" id="search-input" class="search-input"
+          placeholder="Pokémon-Name eingeben…"
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <div id="autocomplete-list" class="autocomplete-list"></div>
+      </div>
       <button class="btn-icon red" id="btn-search">🔍</button>
     </div>
 
     <!-- Schnellsuche Buttons -->
     <div class="quick-search">
       <span class="qs-label">Beliebte:</span>
-      <button class="qs-btn" onclick="quickSearch('Pikachu')">Pikachu</button>
-      <button class="qs-btn" onclick="quickSearch('Charizard')">Glurak</button>
-      <button class="qs-btn" onclick="quickSearch('Mewtwo')">Mewtu</button>
-      <button class="qs-btn" onclick="quickSearch('Eevee')">Evoli</button>
+      <button class="qs-btn" id="qs-pikachu">Pikachu</button>
+      <button class="qs-btn" id="qs-charizard">Glurak</button>
+      <button class="qs-btn" id="qs-mewtwo">Mewtu</button>
+      <button class="qs-btn" id="qs-eevee">Evoli</button>
     </div>
 
     <!-- Loader -->
