@@ -1,574 +1,281 @@
-/* ============================================================
-   PokéDex Family — Pokémon Karten-Wert-Checker
-   Vanilla JS, keine Frameworks. localStorage für Sammlungen.
-   ============================================================ */
+/* PokéDex Family — App Logic */
 
-'use strict';
+// ---- STATE ----
+let currentProfile = null;
+let currentCard = null;
+let cameraStream = null;
+let currentTab = 'search';
 
-/* ============ KONSTANTEN & STATE ============ */
-const API_BASE = 'https://api.pokemontcg.io/v2/cards';
-
-// Profile-Definitionen
-const PROFILES = {
-  franz: { name: 'Franz', avatar: '🦊', emoji: 'fox' },
-  kate:   { name: 'Kate',   avatar: '🌸', emoji: 'flower' }
-};
-
-const state = {
-  profile: null,          // aktuelles Profil ('franz' | 'kate')
-  view: 'search',         // aktive Ansicht
-  currentCard: null,      // aktuell angezeigte Karte
-  selectedCards: [],      // Suchergebnisse
-  collections: {},        // { franz: [...], kate: [...] }
-  cameraStream: null,     // aktiver Kamera-Stream
-  lastPhoto: null         // letztes Foto (DataURL)
-};
-
-/* ============ DOM REFERENZEN ============ */
-const $ = (id) => document.getElementById(id);
-
-/* ============ INITIALISIERUNG ============ */
-function init() {
-  loadCollections();
-  bindEvents();
-  updateProfileCounts();
-  registerServiceWorker();
+// ---- STORAGE ----
+function getCollection(profile) {
+  try { return JSON.parse(localStorage.getItem('col_' + profile) || '[]'); }
+  catch { return []; }
+}
+function saveCollection(profile, cards) {
+  localStorage.setItem('col_' + profile, JSON.stringify(cards));
+}
+function isInCollection(profile, id) {
+  return getCollection(profile).some(c => c.id === id);
 }
 
-/* ============ SAMMLUNG (localStorage) ============ */
-const STORAGE_KEY = 'pokefam_collections_v1';
-
-function loadCollections() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    state.collections = raw ? JSON.parse(raw) : { franz: [], kate: [] };
-  } catch (e) {
-    console.warn('Sammlung konnte nicht geladen werden:', e);
-    state.collections = { franz: [], kate: [] };
-  }
-  if (!state.collections.franz) state.collections.franz = [];
-  if (!state.collections.kate) state.collections.kate = [];
-}
-
-function saveCollections() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.collections));
-  } catch (e) {
-    console.warn('Sammlung konnte nicht gespeichert werden:', e);
-    showToast('⚠️ Speicher voll!');
-  }
-}
-
-function getCollection() {
-  return state.profile ? state.collections[state.profile] : [];
-}
-
-function updateProfileCounts() {
-  $('count-franz').textContent = `${state.collections.franz.length} Karte${state.collections.franz.length === 1 ? '' : 'n'}`;
-  $('count-kate').textContent = `${state.collections.kate.length} Karte${state.collections.kate.length === 1 ? '' : 'n'}`;
-}
-
-/* ============ EVENT BINDING ============ */
-function bindEvents() {
-  // Profil-Auswahl
-  document.querySelectorAll('.profile-btn').forEach(btn => {
-    btn.addEventListener('click', () => selectProfile(btn.dataset.profile));
-  });
-
-  // Top-Bar
-  $('btn-back-to-profile').addEventListener('click', () => {
-    stopCamera();
-    showScreen('profile');
-  });
-  $('btn-collection').addEventListener('click', () => switchView('collection'));
-
-  // Suche
-  $('btn-search').addEventListener('click', doSearch);
-  $('search-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') doSearch();
-  });
-
-  // Kamera
-  $('btn-camera').addEventListener('click', openCamera);
-  $('btn-camera-close').addEventListener('click', closeCamera);
-  $('btn-shutter').addEventListener('click', capturePhoto);
-
-  // Kamera-Modal
-  $('modal-shutter').addEventListener('click', captureModalPhoto);
-  $('modal-close').addEventListener('click', closeCameraModal);
-
-  // Bestätigen-Modal
-  $('confirm-ok').addEventListener('click', confirmSearch);
-  $('confirm-cancel').addEventListener('click', closeConfirmModal);
-  $('confirm-name').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') confirmSearch();
-  });
-
-  // Bottom-Nav
-  document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => switchView(btn.dataset.view));
-  });
-}
-
-/* ============ PROFIL ============ */
-function selectProfile(profile) {
-  state.profile = profile;
-  const p = PROFILES[profile];
-  $('top-profile-name').textContent = p.name;
-  $('top-profile-avatar').textContent = p.avatar;
-  showScreen('main');
-  switchView('search');
-  showToast(`Hallo ${p.name}! 🎉`);
-}
-
-/* ============ SCREEN / VIEW MANAGEMENT ============ */
-function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  $(id).classList.add('active');
-}
-
-function switchView(view) {
-  state.view = view;
-  // Buttons aktualisieren
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  // Bereiche umschalten
-  $('results').hidden = true;
-  $('detail').hidden = true;
-  $('collection').hidden = true;
-  $('camera-view').hidden = true;
-
-  if (view === 'search') {
-    $('search-card').hidden = false;
-    if (state.currentCard) showDetail(state.currentCard);
-  } else if (view === 'collection') {
-    $('search-card').hidden = true;
-    renderCollection();
-  }
-}
-
-/* ============ SUCHE ============ */
-async function doSearch() {
-  const query = $('search-input').value.trim();
-  if (!query) {
-    showError('Bitte gib einen Kartennamen ein! ✏️');
-    return;
-  }
-  hideError();
-  $('results').hidden = true;
-  $('detail').hidden = true;
-  showLoading('Suche Karte…');
-
-  try {
-    const cards = await searchCards(query);
-    hideLoading();
-    if (cards.length === 0) {
-      showError(`Keine Karte "${query}" gefunden. Prüfe die Schreibweise! 🤔`);
-      return;
-    }
-    state.selectedCards = cards;
-    renderResults(cards);
-  } catch (err) {
-    hideLoading();
-    showError('Ups, das hat nicht geklappt. Bist du online? 📡');
-    console.error('Suchfehler:', err);
-  }
-}
-
-async function searchCards(query) {
-  const url = `${API_BASE}?q=name:${encodeURIComponent(query)}&pageSize=12&orderBy=set.releaseDate`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`API Fehler: ${res.status}`);
-  const data = await res.json();
-  return data.data || [];
-}
-
-/* ============ ERGEBNISSE ANZEIGEN ============ */
-function renderResults(cards) {
-  hideError();
-  $('detail').hidden = true;
-  const container = $('results');
-  container.hidden = false;
-  container.innerHTML = `
-    <p class="results-title">${cards.length} Ergebnis${cards.length === 1 ? '' : 'se'}</p>
-    ${cards.map(card => `
-      <div class="card-list-item" data-id="${card.id}">
-        <img class="card-list-img" src="${card.images && card.images.small}" alt="${card.name}" loading="lazy" onerror="this.style.opacity=0.3">
-        <div class="card-list-info">
-          <span class="card-list-name">${escapeHTML(card.name)}</span>
-          <span class="card-list-set">${escapeHTML(card.set ? card.set.name : '')} · ${escapeHTML(card.rarity || '')}</span>
-          <span class="card-list-price ${card.price ? '' : 'no-price'}">${card.price ? formatPrice(card.price) : 'Preis unbekannt'}</span>
-        </div>
-      </div>
-    `).join('')}
-  `;
-  container.querySelectorAll('.card-list-item').forEach(item => {
-    item.addEventListener('click', () => {
-      const card = cards.find(c => c.id === item.dataset.id);
-      if (card) showDetail(card);
-    });
-  });
-}
-
-/* ============ KARTEN-DETAIL ============ */
-function showDetail(card) {
-  state.currentCard = card;
-  $('results').hidden = true;
-  $('collection').hidden = true;
-  $('camera-view').hidden = true;
-  $('search-card').hidden = false;
-  hideError();
-
-  const inCollection = getCollection().some(c => c.id === card.id);
-  const price = getBestPrice(card);
-  const grading = getGradingNote(card);
-
-  const container = $('detail');
-  container.hidden = false;
-  container.innerHTML = `
-    <div class="detail-header">
-      <div class="detail-header-btns">
-        <button class="icon-btn" id="btn-detail-add" aria-label="Zur Sammlung">${inCollection ? '✅' : '➕'}</button>
-        <button class="icon-btn" id="btn-detail-close" aria-label="Schließen">✖</button>
-      </div>
-    </div>
-    <div class="detail-body">
-      <div class="detail-top">
-        <img class="detail-img" src="${card.images && card.images.large}" alt="${card.name}" onerror="this.style.opacity=0.3">
-        <div class="detail-meta">
-          <div class="detail-name">${escapeHTML(card.name)}</div>
-          <div class="detail-set">${escapeHTML(card.set ? card.set.name : '')}</div>
-          <div class="detail-set">${escapeHTML(card.set ? card.set.ptcgoCode : '')} · ${escapeHTML(card.number || '')}</div>
-          ${card.rarity ? `<span class="detail-rarity">${escapeHTML(card.rarity)}</span>` : ''}
-        </div>
-      </div>
-      <div class="price-box">
-        <div class="price-label">💎 Marktwert</div>
-        <div class="price-value">${price ? formatPrice(price) : '—'}</div>
-        <div class="price-note">${priceNote(card)}</div>
-      </div>
-      <div class="grading-box">
-        <div class="grading-title">📋 Zustand (Grading)</div>
-        <div class="grading-text">${grading}</div>
-      </div>
-      <div class="detail-actions">
-        <button class="btn-add ${inCollection ? 'added' : ''}" id="btn-add-card">${inCollection ? '✅ In Sammlung' : '➕ Zur Sammlung'}</button>
-        <a class="btn-link" href="${cardmarketUrl(card)}" target="_blank" rel="noopener">Cardmarket ↗</a>
-      </div>
-    </div>
-  `;
-
-  // Detail-Events
-  $('btn-detail-close').addEventListener('click', () => {
-    $('detail').hidden = true;
-    if (state.selectedCards.length) renderResults(state.selectedCards);
-  });
-  $('btn-add-card').addEventListener('click', () => toggleInCollection(card));
-  $('btn-detail-add').addEventListener('click', () => toggleInCollection(card));
-}
-
-/* ============ PREIS-LOGIK ============ */
+// ---- PRICE ----
 function getBestPrice(card) {
-  // Priorität: TCGPlayer Market > Cardmarket Average > TCGPlayer Mid
-  if (card.tcgplayer && card.tcgplayer.prices) {
-    const p = card.tcgplayer.prices;
-    const keys = ['holofoil', 'normal', 'reverseHolofoil', '1stEditionHolofoil', 'unlimitedHolofoil'];
-    for (const k of keys) {
-      if (p[k] && typeof p[k].market === 'number' && p[k].market > 0) return p[k].market;
-    }
-    for (const k of keys) {
-      if (p[k] && typeof p[k].mid === 'number' && p[k].mid > 0) return p[k].mid;
-    }
-  }
-  if (card.cardmarket && card.cardmarket.prices) {
-    const p = card.cardmarket.prices;
-    if (typeof p.averageSellPrice === 'number' && p.averageSellPrice > 0) return p.averageSellPrice;
-    if (typeof p.trendPrice === 'number' && p.trendPrice > 0) return p.trendPrice;
+  const cm = card.cardmarket?.prices;
+  if (cm?.averageSellPrice) return { v: cm.averageSellPrice, label: 'Cardmarket Ø', sym: '€' };
+  if (cm?.trendPrice)       return { v: cm.trendPrice,       label: 'CM Trend',     sym: '€' };
+  const tcp = card.tcgplayer?.prices;
+  if (tcp) {
+    const variant = tcp.holofoil || tcp.normal || tcp.reverseHolofoil || Object.values(tcp)[0];
+    if (variant?.market) return { v: variant.market, label: 'TCGPlayer', sym: '$' };
   }
   return null;
 }
+function fmtPrice(p) { return p ? p.sym + p.v.toFixed(2) : 'k.A.'; }
 
-function priceNote(card) {
-  const parts = [];
-  if (card.tcgplayer && card.tcgplayer.prices) {
-    const p = card.tcgplayer.prices;
-    const holofoil = p.holofoil ? p.holofoil.market : null;
-    const normal = p.normal ? p.normal.market : null;
-    if (holofoil) parts.push(`Holo: ${formatPrice(holofoil)}`);
-    if (normal) parts.push(`Normal: ${formatPrice(normal)}`);
-  }
-  if (card.cardmarket && card.cardmarket.prices) {
-    const p = card.cardmarket.prices;
-    if (typeof p.averageSellPrice === 'number') parts.push(`Cardmarket Ø: ${formatPrice(p.averageSellPrice)}`);
-  }
-  return parts.length ? parts.join(' · ') : 'Preis nicht verfügbar';
+// ---- API ----
+async function searchCards(query) {
+  const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:"${encodeURIComponent(query)}"&pageSize=20`);
+  if (!res.ok) throw new Error('API ' + res.status);
+  return (await res.json()).data || [];
 }
 
-function formatPrice(value) {
-  if (value === null || value === undefined) return '—';
-  return '€ ' + Number(value).toFixed(2);
+// ---- SCREEN SWITCHING ----
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
 }
 
-/* ============ GRADING-HINWEIS ============ */
-function getGradingNote(card) {
-  const price = getBestPrice(card);
-  if (price === null) {
-    return 'Der Wert hängt stark vom Zustand ab. Gut erhaltene Karten (Near Mint) sind meist mehr wert als abgenutzte.';
-  }
-  if (price > 50) {
-    return 'Wow, eine wertvolle Karte! 🤑 Bei Sammlerkarten lohnt sich oft eine professionelle Bewertung (Grading), z.B. bei PSA oder BGS. Eine PSA 10 kann deutlich mehr wert sein als eine ungegradete Karte.';
-  }
-  if (price > 10) {
-    return 'Schöner Fund! 💎 Der Wert gilt für Karten in gutem Zustand (Near Mint). Achte darauf, die Karte in einer Hülle zu schützen, damit der Wert erhalten bleibt.';
-  }
-  return 'Kleinere Karten sind trotzdem spannend! 💛 Der angezeigte Wert gilt für Karten in gutem Zustand (Near Mint). Karten mit Kratzern oder Knicken sind meist weniger wert.';
+// ---- TOAST ----
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show';
+  setTimeout(() => t.className = 'toast', 2500);
 }
 
-/* ============ CARDMARKET LINK ============ */
-function cardmarketUrl(card) {
-  const base = 'https://www.cardmarket.com/de/Pokemon';
-  if (card.cardmarket && card.cardmarket.url) return card.cardmarket.url;
-  // Fallback: Suche über den Namen
-  return `${base}?searchString=${encodeURIComponent(card.name)}`;
+// ---- PROFILE ----
+function selectProfile(profile) {
+  currentProfile = profile;
+  const info = { franz: { name: "Franz's PokéDex", avatar: '🦊' }, kate: { name: "Kate's PokéDex", avatar: '🌸' } };
+  document.getElementById('header-name').textContent   = info[profile].name;
+  document.getElementById('header-avatar').textContent = info[profile].avatar;
+  document.getElementById('detail-avatar').textContent = info[profile].avatar;
+  showScreen('screen-main');
+  showTab('search');
 }
 
-/* ============ SAMMLUNG ============ */
-function toggleInCollection(card) {
-  const coll = getCollection();
-  const idx = coll.findIndex(c => c.id === card.id);
-  const btn = $('btn-add-card');
-  const headerBtn = $('btn-detail-add');
-
-  if (idx >= 0) {
-    coll.splice(idx, 1);
-    saveCollections();
-    if (btn) { btn.textContent = '➕ Zur Sammlung'; btn.classList.remove('added'); }
-    if (headerBtn) headerBtn.textContent = '➕';
-    showToast('Karte entfernt 🗑️');
-  } else {
-    // Nur minimale Daten speichern
-    coll.push({
-      id: card.id,
-      name: card.name,
-      set: card.set ? card.set.name : '',
-      rarity: card.rarity || '',
-      image: card.images ? card.images.small : '',
-      number: card.number || '',
-      price: getBestPrice(card)
-    });
-    saveCollections();
-    if (btn) { btn.textContent = '✅ In Sammlung'; btn.classList.add('added'); }
-    if (headerBtn) headerBtn.textContent = '✅';
-    showToast('Zur Sammlung hinzugefügt! 🎉');
-  }
-  updateProfileCounts();
-}
-
-function renderCollection() {
-  const coll = getCollection();
-  const container = $('collection');
-  container.hidden = false;
-  $('results').hidden = true;
-  $('detail').hidden = true;
-  $('camera-view').hidden = true;
-  $('search-card').hidden = true;
-
-  const total = coll.reduce((sum, c) => sum + (c.price || 0), 0);
-
-  if (coll.length === 0) {
-    container.innerHTML = `
-      <div class="collection-empty">
-        <span class="big">🎒</span>
-        <p>Deine Sammlung ist noch leer!<br>Scanne oder suche deine erste Karte.</p>
-      </div>
-    `;
-    return;
-  }
-
-  container.innerHTML = `
-    <div class="collection-summary">
-      <div class="collection-total-label">💰 Sammlungswert</div>
-      <div class="collection-total-value">${formatPrice(total)}</div>
-      <div class="collection-count">${coll.length} Karte${coll.length === 1 ? '' : 'n'}</div>
-    </div>
-    ${coll.map((c, i) => `
-      <div class="collection-item">
-        <img class="collection-item-img" src="${c.image}" alt="${c.name}" onerror="this.style.opacity=0.3">
-        <div class="collection-item-info">
-          <span class="collection-item-name">${escapeHTML(c.name)}</span>
-          <span class="collection-item-set">${escapeHTML(c.set)} · ${escapeHTML(c.rarity || '')}</span>
-          <span class="collection-item-price ${c.price ? '' : 'no-price'}">${c.price ? formatPrice(c.price) : 'Preis unbekannt'}</span>
-        </div>
-        <button class="collection-item-remove" data-idx="${i}" aria-label="Karte entfernen">🗑️</button>
-      </div>
-    `).join('')}
-  `;
-
-  container.querySelectorAll('.collection-item-remove').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = parseInt(btn.dataset.idx, 10);
-      const removed = coll.splice(idx, 1)[0];
-      saveCollections();
-      updateProfileCounts();
-      renderCollection();
-      showToast(`${removed.name} entfernt 🗑️`);
-    });
+function updateCounts() {
+  ['franz', 'kate'].forEach(p => {
+    const n = getCollection(p).length;
+    document.getElementById('count-' + p).textContent = n + ' Karten';
   });
 }
 
-/* ============ KAMERA ============ */
-async function openCamera() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    showError('Kamera wird auf diesem Gerät nicht unterstützt. Bitte gib den Namen manuell ein. 📝');
-    return;
-  }
-  hideError();
-  $('camera-view').hidden = false;
-  try {
-    state.cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' } },
-      audio: false
-    });
-    const video = $('camera-video');
-    video.srcObject = state.cameraStream;
-    await video.play();
-  } catch (err) {
-    $('camera-view').hidden = true;
-    showError('Kamera konnte nicht gestartet werden. Bitte gib den Namen manuell ein. 📝');
-    console.error('Kamera-Fehler:', err);
-  }
+// ---- TABS ----
+function showTab(tab) {
+  currentTab = tab;
+  document.getElementById('content-search').style.display     = tab === 'search'     ? 'block' : 'none';
+  document.getElementById('content-collection').style.display = tab === 'collection' ? 'block' : 'none';
+  document.getElementById('tab-search').className = 'nav-btn' + (tab === 'search'     ? ' active' : '');
+  document.getElementById('tab-col').className    = 'nav-btn' + (tab === 'collection' ? ' active' : '');
+  if (tab === 'collection') renderCollection();
 }
 
-function closeCamera() {
+// ---- SEARCH ----
+async function doSearch() {
+  const q = document.getElementById('search-input').value.trim();
+  if (!q) { toast('Bitte Namen eingeben!'); return; }
   stopCamera();
-  $('camera-view').hidden = true;
+  document.getElementById('loader').style.display = 'flex';
+  document.getElementById('no-results').style.display = 'none';
+  document.getElementById('results-grid').innerHTML = '';
+  try {
+    const cards = await searchCards(q);
+    renderResults(cards);
+  } catch(e) {
+    toast('⚠️ Fehler – bitte nochmal versuchen.');
+  } finally {
+    document.getElementById('loader').style.display = 'none';
+  }
 }
 
+function renderResults(cards) {
+  const grid = document.getElementById('results-grid');
+  if (!cards.length) { document.getElementById('no-results').style.display = 'block'; return; }
+  grid.innerHTML = cards.map((card, i) => {
+    const p = getBestPrice(card);
+    return `<div class="result-card" onclick="openDetail(${i})">
+      <img src="${card.images?.small || ''}" alt="${card.name}" loading="lazy">
+      <div class="rc-info">
+        <div class="rc-name">${card.name}</div>
+        <div class="rc-set">${card.set?.name || ''}</div>
+        <div class="rc-price">${fmtPrice(p)}</div>
+      </div>
+    </div>`;
+  }).join('');
+  // Store cards globally for onclick
+  window._searchResults = cards;
+}
+
+// ---- DETAIL ----
+function openDetail(idx) {
+  const card = window._searchResults[idx];
+  currentCard = card;
+  const p = getBestPrice(card);
+
+  document.getElementById('detail-img').src = card.images?.large || card.images?.small || '';
+  document.getElementById('detail-name').textContent = card.name;
+  document.getElementById('detail-set').textContent  = (card.set?.name || '') + (card.set?.series ? ' · ' + card.set.series : '');
+  document.getElementById('price-label').textContent = p?.label || 'Preis';
+  document.getElementById('price-value').textContent = fmtPrice(p);
+  document.getElementById('price-date').textContent  = card.cardmarket?.updatedAt ? 'Stand: ' + card.cardmarket.updatedAt : '';
+
+  // Badges
+  let badges = '';
+  if (card.rarity)    badges += `<span class="badge b-rarity">⭐ ${card.rarity}</span>`;
+  if (card.types?.[0]) badges += `<span class="badge b-type">${card.types[0]}</span>`;
+  if (card.hp)        badges += `<span class="badge b-hp">❤️ ${card.hp} HP</span>`;
+  document.getElementById('detail-badges').innerHTML = badges;
+
+  // Price rows
+  const cm = card.cardmarket?.prices;
+  const tcp = card.tcgplayer?.prices;
+  let rows = '';
+  if (cm?.averageSellPrice) rows += priceRow('CM Ø Verkauf',   '€' + cm.averageSellPrice.toFixed(2));
+  if (cm?.trendPrice)       rows += priceRow('CM Trend',       '€' + cm.trendPrice.toFixed(2));
+  if (cm?.lowPrice)         rows += priceRow('CM Niedrig',     '€' + cm.lowPrice.toFixed(2));
+  if (tcp) {
+    const v = tcp.holofoil || tcp.normal || Object.values(tcp)[0];
+    if (v?.low)    rows += priceRow('TCG Niedrig', '$' + v.low.toFixed(2));
+    if (v?.market) rows += priceRow('TCG Markt',   '$' + v.market.toFixed(2));
+    if (v?.high)   rows += priceRow('TCG Hoch',    '$' + v.high.toFixed(2));
+  }
+  document.getElementById('price-rows').innerHTML = rows;
+
+  // Grading
+  document.getElementById('grading-text').innerHTML =
+    '💎 <b>Mint (M):</b> Perfekt — höchster Wert<br>' +
+    '✨ <b>Near Mint (NM):</b> Kaum gespielt<br>' +
+    '👍 <b>Excellent (EX):</b> Leichte Gebrauchsspuren<br>' +
+    '📦 <b>Good (GD):</b> Sichtbare Spuren — weniger wert' +
+    (card.rarity?.includes('Rare') ? '<br><br>⭐ Seltene Karte — Zustand besonders wichtig!' : '');
+
+  // Add-Button
+  const btn = document.getElementById('btn-add');
+  if (isInCollection(currentProfile, card.id)) {
+    btn.textContent = '✅ In Sammlung';
+    btn.classList.add('added');
+  } else {
+    btn.textContent = '⭐ Zur Sammlung hinzufügen';
+    btn.classList.remove('added');
+  }
+
+  showScreen('screen-detail');
+}
+
+function priceRow(label, value) {
+  return `<div class="price-row"><span>${label}</span><span>${value}</span></div>`;
+}
+
+// ---- COLLECTION ----
+function addCard() {
+  if (!currentCard) return;
+  const p = getBestPrice(currentCard);
+  const col = getCollection(currentProfile);
+  if (col.find(c => c.id === currentCard.id)) { toast('Bereits in der Sammlung!'); return; }
+  col.push({
+    id: currentCard.id,
+    name: currentCard.name,
+    set: currentCard.set?.name || '',
+    image: currentCard.images?.small || '',
+    price: p?.v || 0,
+    sym: p?.sym || '€'
+  });
+  saveCollection(currentProfile, col);
+  toast('🎉 ' + currentCard.name + ' hinzugefügt!');
+  document.getElementById('btn-add').textContent = '✅ In Sammlung';
+  document.getElementById('btn-add').classList.add('added');
+  updateCounts();
+}
+
+function removeCard(id) {
+  const col = getCollection(currentProfile).filter(c => c.id !== id);
+  saveCollection(currentProfile, col);
+  toast('🗑️ Entfernt');
+  updateCounts();
+  renderCollection();
+}
+
+function renderCollection() {
+  const col = getCollection(currentProfile);
+  document.getElementById('col-empty').style.display  = col.length ? 'none' : 'block';
+  document.getElementById('col-header').style.display = col.length ? 'block' : 'none';
+  if (!col.length) { document.getElementById('col-list').innerHTML = ''; return; }
+  const total = col.reduce((s, c) => s + (c.price || 0), 0);
+  document.getElementById('col-total').textContent = '€' + total.toFixed(2);
+  document.getElementById('col-count').textContent = col.length + ' Karten';
+  document.getElementById('col-list').innerHTML = col.map(c => `
+    <div class="col-item">
+      <img src="${c.image}" alt="${c.name}">
+      <div class="col-item-info">
+        <div class="col-item-name">${c.name}</div>
+        <div class="col-item-set">${c.set}</div>
+        <div class="col-item-price">${c.sym}${(c.price||0).toFixed(2)}</div>
+      </div>
+      <button class="btn-remove" onclick="removeCard('${c.id}')">🗑️</button>
+    </div>`).join('');
+}
+
+// ---- CAMERA ----
+async function toggleCamera() {
+  if (cameraStream) { stopCamera(); return; }
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    document.getElementById('camera-video').srcObject = cameraStream;
+    document.getElementById('camera-container').style.display = 'block';
+    toast('📷 Karte in den Rahmen halten, dann 📸 drücken');
+  } catch(e) {
+    toast('Kamera nicht verfügbar — bitte manuell suchen');
+  }
+}
 function stopCamera() {
-  if (state.cameraStream) {
-    state.cameraStream.getTracks().forEach(t => t.stop());
-    state.cameraStream = null;
-  }
+  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+  document.getElementById('camera-container').style.display = 'none';
 }
-
-function capturePhoto() {
-  const video = $('camera-video');
-  if (!video.videoWidth) return;
-  const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+function snapPhoto() {
+  const video = document.getElementById('camera-video');
+  const canvas = document.getElementById('camera-canvas');
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
   canvas.getContext('2d').drawImage(video, 0, 0);
-  state.lastPhoto = canvas.toDataURL('image/jpeg', 0.8);
-  closeCamera();
-  openConfirmModal(state.lastPhoto);
-}
-
-/* ============ KAMERA MODAL (alternativer Weg) ============ */
-async function openCameraModal() {
-  $('modal-camera').hidden = false;
-  try {
-    state.cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' } },
-      audio: false
-    });
-    const video = $('modal-video');
-    video.srcObject = state.cameraStream;
-    await video.play();
-  } catch (err) {
-    closeCameraModal();
-    showError('Kamera konnte nicht gestartet werden. 📝');
-    console.error('Kamera-Modal-Fehler:', err);
-  }
-}
-
-function closeCameraModal() {
   stopCamera();
-  $('modal-camera').hidden = true;
+  const name = prompt('Kartenname eingeben (steht oben auf der Karte):');
+  if (name?.trim()) { document.getElementById('search-input').value = name.trim(); doSearch(); }
 }
 
-function captureModalPhoto() {
-  const video = $('modal-video');
-  if (!video.videoWidth) return;
-  const canvas = $('modal-canvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video, 0, 0);
-  state.lastPhoto = canvas.toDataURL('image/jpeg', 0.8);
-  closeCameraModal();
-  openConfirmModal(state.lastPhoto);
+// ---- CARDMARKET ----
+function openCardmarket() {
+  if (!currentCard) return;
+  window.open('https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=' + encodeURIComponent(currentCard.name), '_blank');
 }
 
-/* ============ BESTÄTIGEN-MODAL ============ */
-function openConfirmModal(photoDataUrl) {
-  $('confirm-image').src = photoDataUrl;
-  $('confirm-name').value = '';
-  $('modal-confirm').hidden = false;
-  setTimeout(() => $('confirm-name').focus(), 300);
-}
+// ---- INIT ----
+document.addEventListener('DOMContentLoaded', () => {
+  updateCounts();
 
-function closeConfirmModal() {
-  $('modal-confirm').hidden = true;
-  state.lastPhoto = null;
-}
+  document.getElementById('btn-franz').addEventListener('click', () => selectProfile('franz'));
+  document.getElementById('btn-kate').addEventListener('click',  () => selectProfile('kate'));
+  document.getElementById('btn-back').addEventListener('click',  () => { stopCamera(); updateCounts(); showScreen('screen-profile'); });
+  document.getElementById('btn-back-detail').addEventListener('click', () => showScreen('screen-main'));
+  document.getElementById('btn-search').addEventListener('click', doSearch);
+  document.getElementById('btn-cam').addEventListener('click', toggleCamera);
+  document.getElementById('btn-snap').addEventListener('click', snapPhoto);
+  document.getElementById('tab-search').addEventListener('click', () => showTab('search'));
+  document.getElementById('tab-col').addEventListener('click',    () => showTab('collection'));
+  document.getElementById('btn-add').addEventListener('click', addCard);
+  document.getElementById('btn-cm').addEventListener('click', openCardmarket);
+  document.getElementById('search-input').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
 
-function confirmSearch() {
-  const name = $('confirm-name').value.trim();
-  closeConfirmModal();
-  if (!name) {
-    showError('Bitte gib einen Namen ein! ✏️');
-    return;
-  }
-  $('search-input').value = name;
-  doSearch();
-}
-
-/* ============ LOADING / FEHLER / TOAST ============ */
-function showLoading(text) {
-  $('loading').hidden = false;
-  $('loading-text').textContent = text || 'Lädt…';
-}
-function hideLoading() { $('loading').hidden = true; }
-
-function showError(msg) {
-  const box = $('error-box');
-  box.textContent = msg;
-  box.hidden = false;
-}
-function hideError() { $('error-box').hidden = true; }
-
-let toastTimer = null;
-function showToast(msg) {
-  const toast = $('toast');
-  toast.textContent = msg;
-  toast.hidden = false;
-  requestAnimationFrame(() => toast.classList.add('show'));
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => { toast.hidden = true; }, 300);
-  }, 2500);
-}
-
-/* ============ HELPER ============ */
-function escapeHTML(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-/* ============ SERVICE WORKER ============ */
-function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(err => {
-        console.warn('Service Worker Registrierung fehlgeschlagen:', err);
-      });
-    });
+    navigator.serviceWorker.register('sw.js').catch(() => {});
   }
-}
-
-/* ============ START ============ */
-document.addEventListener('DOMContentLoaded', init);
+});
