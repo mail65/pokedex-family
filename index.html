@@ -137,6 +137,15 @@
 
 <div id="toast"></div>
 
-<script src="app.js"></script>
+<script>
+// Service Worker komplett deregistrieren + alle Caches löschen
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(r => r.unregister());
+  });
+  caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+}
+</script>
+<script src="app.js?v=20260822-5"></script>
 </body>
 </html>

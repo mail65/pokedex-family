@@ -1,15 +1,38 @@
-/* PokéDex Family — Service Worker v3 — Cache-Busting */
-const CACHE_NAME = 'pokefam-v3';
+/* PokéDex Family — Service Worker v4
+   Network-First für HTML, Cache-Busting bei jedem Deploy
+*/
+const CACHE_VERSION = 'pokefam-v4';
 
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', e => {
+self.addEventListener('install', e => {
+  // Sofort aktivieren, alle alten Caches löschen
   e.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
+    caches.keys()
+      .then(keys => Promise.all(keys.map(k => caches.delete(k))))
+      .then(() => self.skipWaiting())
   );
 });
 
-// Network-first — kein Caching mehr, immer frische Dateien
+self.addEventListener('activate', e => {
+  e.waitUntil(self.clients.claim());
+});
+
+// Network-First: immer frische Dateien, Cache nur als Fallback
 self.addEventListener('fetch', e => {
-  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+  const url = new URL(e.request.url);
+
+  // API: immer live, nie cachen
+  if (url.hostname.includes('api.pokemontcg.io')) return;
+
+  e.respondWith(
+    fetch(e.request)
+      .then(res => {
+        // Erfolgreiche Response in Cache speichern
+        if (res.ok && e.request.method === 'GET') {
+          const clone = res.clone();
+          caches.open(CACHE_VERSION).then(c => c.put(e.request, clone));
+        }
+        return res;
+      })
+      .catch(() => caches.match(e.request))
+  );
 });

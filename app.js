@@ -1,5 +1,5 @@
-/* PokéDex Family — App Logic v2
-   Fixes: Kamera Hochformat, Auto-OCR via Tesseract, robuste API-Suche
+/* PokéDex Family — App Logic v3
+   Fixes: API-Encoding, iOS Kamera, Hochformat, Canvas, Timeout, XSS
 */
 
 // ---- STATE ----
@@ -7,7 +7,6 @@ let currentProfile = null;
 let currentCard = null;
 let cameraStream = null;
 let currentTab = 'search';
-let tesseractReady = false;
 
 // ---- STORAGE ----
 function getCollection(profile) {
@@ -19,6 +18,11 @@ function saveCollection(profile, cards) {
 }
 function isInCollection(profile, id) {
   return getCollection(profile).some(c => c.id === id);
+}
+
+// ---- XSS HELPER ----
+function esc(text) {
+  return (text || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 }
 
 // ---- PRICE ----
@@ -36,22 +40,29 @@ function getBestPrice(card) {
 }
 function fmtPrice(p) { return p ? p.sym + p.v.toFixed(2) : 'k.A.'; }
 
-// ---- API ----
+// ---- API (FIX: encodeURIComponent NICHT auf Anführungszeichen!) ----
+function fetchWithTimeout(url, ms = 8000) {
+  return Promise.race([
+    fetch(url),
+    new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), ms))
+  ]);
+}
+
 async function searchCards(query) {
-  // Sonderzeichen bereinigen, robuste Suche
   const clean = query.trim().replace(/[^a-zA-ZäöüÄÖÜß\s\-]/g, '').trim();
   if (!clean) throw new Error('Leere Suche');
 
-  // Erst exakte Suche, dann fuzzy falls keine Ergebnisse
-  let url = `https://api.pokemontcg.io/v2/cards?q=name:"${encodeURIComponent(clean)}"&pageSize=20`;
-  let res = await fetch(url);
+  // FIX: Anführungszeichen direkt in URL — NICHT encodeURIComponent!
+  // Nur den Namen selbst encoden, nicht die Syntax-Zeichen
+  let url = `https://api.pokemontcg.io/v2/cards?q=name:"${encodeURIComponent(clean).replace(/%22/g, '"')}"&pageSize=20`;
+  let res = await fetchWithTimeout(url);
   if (!res.ok) throw new Error('API ' + res.status);
   let data = await res.json();
 
-  // Falls keine Treffer: fuzzy (ohne Anführungszeichen)
+  // Fuzzy-Fallback ohne Anführungszeichen
   if (!data.data?.length) {
     url = `https://api.pokemontcg.io/v2/cards?q=name:${encodeURIComponent(clean)}*&pageSize=20`;
-    res = await fetch(url);
+    res = await fetchWithTimeout(url);
     if (!res.ok) throw new Error('API ' + res.status);
     data = await res.json();
   }
@@ -90,9 +101,8 @@ function selectProfile(profile) {
 
 function updateCounts() {
   ['franz', 'kate'].forEach(p => {
-    const n = getCollection(p).length;
     const el = document.getElementById('count-' + p);
-    if (el) el.textContent = n + ' Karten';
+    if (el) el.textContent = getCollection(p).length + ' Karten';
   });
 }
 
@@ -112,6 +122,7 @@ async function doSearch(query) {
   if (!q) { toast('Bitte Namen eingeben!'); return; }
 
   stopCamera();
+  hideSnapPreview();
   setLoader(true, 'Suche nach ' + q + '…');
   document.getElementById('no-results').style.display = 'none';
   document.getElementById('results-grid').innerHTML = '';
@@ -121,7 +132,11 @@ async function doSearch(query) {
     renderResults(cards, q);
   } catch(e) {
     console.error(e);
-    toast('⚠️ Verbindungsfehler — bitte nochmal versuchen.');
+    if (e.message === 'Timeout') {
+      toast('⏱️ Zeitüberschreitung — bitte nochmal versuchen.');
+    } else {
+      toast('⚠️ Verbindungsfehler — bitte nochmal versuchen.');
+    }
   } finally {
     setLoader(false);
   }
@@ -136,17 +151,18 @@ function renderResults(cards, query) {
   const grid = document.getElementById('results-grid');
   if (!cards.length) {
     document.getElementById('no-results').style.display = 'block';
-    document.getElementById('no-results-name').textContent = query || '';
+    const el = document.getElementById('no-results-name');
+    if (el) el.textContent = query || '';
     return;
   }
   window._searchResults = cards;
   grid.innerHTML = cards.map((card, i) => {
     const p = getBestPrice(card);
     return `<div class="result-card" onclick="openDetail(${i})">
-      <img src="${card.images?.small || ''}" alt="${card.name}" loading="lazy">
+      <img src="${esc(card.images?.small || '')}" alt="${esc(card.name)}" loading="lazy">
       <div class="rc-info">
-        <div class="rc-name">${card.name}</div>
-        <div class="rc-set">${card.set?.name || ''}</div>
+        <div class="rc-name">${esc(card.name)}</div>
+        <div class="rc-set">${esc(card.set?.name || '')}</div>
         <div class="rc-price">${fmtPrice(p)}</div>
       </div>
     </div>`;
@@ -169,9 +185,9 @@ function openDetail(idx) {
     card.cardmarket?.updatedAt ? 'Stand: ' + card.cardmarket.updatedAt : '';
 
   let badges = '';
-  if (card.rarity)     badges += `<span class="badge b-rarity">⭐ ${card.rarity}</span>`;
-  if (card.types?.[0]) badges += `<span class="badge b-type">${card.types[0]}</span>`;
-  if (card.hp)         badges += `<span class="badge b-hp">❤️ ${card.hp} HP</span>`;
+  if (card.rarity)     badges += `<span class="badge b-rarity">⭐ ${esc(card.rarity)}</span>`;
+  if (card.types?.[0]) badges += `<span class="badge b-type">${esc(card.types[0])}</span>`;
+  if (card.hp)         badges += `<span class="badge b-hp">❤️ ${esc(card.hp)} HP</span>`;
   document.getElementById('detail-badges').innerHTML = badges;
 
   const cm  = card.cardmarket?.prices;
@@ -211,7 +227,7 @@ function priceRow(label, value) {
   return `<div class="price-row"><span>${label}</span><span>${value}</span></div>`;
 }
 
-// ---- COLLECTION ----
+// ---- COLLECTION (FIX: XSS weg, Event Listener statt onclick) ----
 function addCard() {
   if (!currentCard) return;
   const p = getBestPrice(currentCard);
@@ -233,8 +249,7 @@ function addCard() {
 }
 
 function removeCard(id) {
-  const col = getCollection(currentProfile).filter(c => c.id !== id);
-  saveCollection(currentProfile, col);
+  saveCollection(currentProfile, getCollection(currentProfile).filter(c => c.id !== id));
   toast('🗑️ Entfernt');
   updateCounts();
   renderCollection();
@@ -244,41 +259,76 @@ function renderCollection() {
   const col = getCollection(currentProfile);
   document.getElementById('col-empty').style.display  = col.length ? 'none'  : 'block';
   document.getElementById('col-header').style.display = col.length ? 'block' : 'none';
-  if (!col.length) { document.getElementById('col-list').innerHTML = ''; return; }
+  const list = document.getElementById('col-list');
+  list.innerHTML = '';
+  if (!col.length) return;
+
   const total = col.reduce((s, c) => s + (c.price || 0), 0);
   document.getElementById('col-total').textContent = '€' + total.toFixed(2);
   document.getElementById('col-count').textContent = col.length + ' Karte' + (col.length !== 1 ? 'n' : '');
-  document.getElementById('col-list').innerHTML = col.map(c => `
-    <div class="col-item">
-      <img src="${c.image}" alt="${c.name}">
-      <div class="col-item-info">
-        <div class="col-item-name">${c.name}</div>
-        <div class="col-item-set">${c.set}</div>
-        <div class="col-item-price">${c.sym}${(c.price||0).toFixed(2)}</div>
-      </div>
-      <button class="btn-remove" onclick="removeCard('${c.id}')">🗑️</button>
-    </div>`).join('');
+
+  // FIX: DOM-Elemente statt innerHTML mit onclick — kein XSS
+  col.forEach(c => {
+    const item = document.createElement('div');
+    item.className = 'col-item';
+
+    const img = document.createElement('img');
+    img.src = c.image; img.alt = c.name;
+
+    const info = document.createElement('div');
+    info.className = 'col-item-info';
+    info.innerHTML = `
+      <div class="col-item-name">${esc(c.name)}</div>
+      <div class="col-item-set">${esc(c.set)}</div>
+      <div class="col-item-price">${esc(c.sym)}${(c.price||0).toFixed(2)}</div>`;
+
+    const btn = document.createElement('button');
+    btn.className = 'btn-remove';
+    btn.textContent = '🗑️';
+    btn.addEventListener('click', () => removeCard(c.id));
+
+    item.appendChild(img);
+    item.appendChild(info);
+    item.appendChild(btn);
+    list.appendChild(item);
+  });
 }
 
-// ---- KAMERA (Fix: Hochformat erzwingen) ----
+// ---- KAMERA (FIX: iOS Safari + Hochformat) ----
 async function toggleCamera() {
   if (cameraStream) { stopCamera(); return; }
   try {
-    // Hochformat erzwingen: height > width
+    // FIX: aspectRatio 9/16 erzwingt Hochformat auf iOS
     cameraStream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: 'environment',
+        facingMode: { ideal: 'environment' },
+        aspectRatio: { ideal: 9/16 },
         width:  { ideal: 720 },
         height: { ideal: 1280 }
-      }
+      },
+      audio: false
     });
+
     const video = document.getElementById('camera-video');
-    video.srcObject = cameraStream;
-    document.getElementById('camera-container').style.display = 'block';
-    toast('📷 Karte hochkant in den Rahmen halten, dann 📸 drücken');
+
+    // FIX: srcObject Kompatibilität für ältere iOS Safari
+    if ('srcObject' in video) {
+      video.srcObject = cameraStream;
+    } else {
+      video.src = URL.createObjectURL(cameraStream);
+    }
+
+    // FIX: Explizit play() aufrufen für iOS
+    video.play().catch(e => console.warn('Video play:', e));
+
+    // FIX: Hochformat im Container erzwingen
+    const container = document.getElementById('camera-container');
+    container.style.display = 'block';
+
+    toast('📷 Karte hochkant halten — Name oben sichtbar — dann 📸 drücken');
   } catch(e) {
-    toast('Kamera nicht verfügbar — bitte manuell suchen');
-    console.error(e);
+    console.error('Kamera:', e);
+    toast('Kamera nicht verfügbar — bitte Namen manuell eingeben');
   }
 }
 
@@ -290,30 +340,35 @@ function stopCamera() {
   document.getElementById('camera-container').style.display = 'none';
 }
 
-// ---- FOTO ----
+// ---- FOTO (FIX: videoWidth/Height Check) ----
 function snapPhoto() {
-  const video  = document.getElementById('camera-video');
+  const video = document.getElementById('camera-video');
+
+  // FIX: Warten bis Video-Dimensionen bekannt sind
+  if (!video.videoWidth || !video.videoHeight) {
+    toast('⏳ Kamera noch nicht bereit — kurz warten...');
+    video.addEventListener('loadedmetadata', snapPhoto, { once: true });
+    return;
+  }
+
   const canvas = document.getElementById('camera-canvas');
   canvas.width  = video.videoWidth;
   canvas.height = video.videoHeight;
   canvas.getContext('2d').drawImage(video, 0, 0);
   stopCamera();
 
-  // Foto-Vorschau anzeigen + Suchfeld fokussieren
+  // Foto-Vorschau zeigen
   document.getElementById('snap-preview').src = canvas.toDataURL('image/jpeg', 0.8);
   document.getElementById('snap-preview-box').style.display = 'block';
-  document.getElementById('search-input').value = '';
-  document.getElementById('search-input').placeholder = 'Pokémon-Name eingeben…';
-  document.getElementById('search-input').focus();
-  toast('📸 Foto gemacht! Bitte Namen oben auf der Karte eintippen 👆');
+  const input = document.getElementById('search-input');
+  input.value = '';
+  input.placeholder = 'Namen von Karte abtippen…';
+  input.focus();
+  toast('📸 Foto gemacht! Name oben auf der Karte eintippen 👆');
 }
 
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = src; s.onload = resolve; s.onerror = reject;
-    document.head.appendChild(s);
-  });
+function hideSnapPreview() {
+  document.getElementById('snap-preview-box').style.display = 'none';
 }
 
 // ---- CARDMARKET ----
@@ -333,26 +388,23 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-kate').addEventListener('click',        () => selectProfile('kate'));
   document.getElementById('btn-back').addEventListener('click',        () => { stopCamera(); updateCounts(); showScreen('screen-profile'); });
   document.getElementById('btn-back-detail').addEventListener('click', () => showScreen('screen-main'));
-  document.getElementById('btn-search').addEventListener('click',      () => doSearch());
   document.getElementById('btn-cam').addEventListener('click',         toggleCamera);
   document.getElementById('btn-snap').addEventListener('click',        snapPhoto);
   document.getElementById('tab-search').addEventListener('click',      () => showTab('search'));
   document.getElementById('tab-col').addEventListener('click',         () => showTab('collection'));
   document.getElementById('btn-add').addEventListener('click',         addCard);
   document.getElementById('btn-cm').addEventListener('click',          openCardmarket);
-  document.getElementById('search-input').addEventListener('keydown',  e => {
-    if (e.key === 'Enter') {
-      document.getElementById('snap-preview-box').style.display = 'none';
-      doSearch();
-    }
+
+  document.getElementById('btn-search').addEventListener('click', () => {
+    hideSnapPreview();
+    doSearch();
   });
 
-  // Foto-Vorschau schließen bei Suche
-  document.getElementById('btn-search').addEventListener('click', () => {
-    document.getElementById('snap-preview-box').style.display = 'none';
-  });
-  document.getElementById('search-input').addEventListener('keydown', () => {
-    document.getElementById('snap-preview-box').style.display = 'none';
+  document.getElementById('search-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      hideSnapPreview();
+      doSearch();
+    }
   });
 
   if ('serviceWorker' in navigator) {
