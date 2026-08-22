@@ -1,10 +1,13 @@
-/* PokéDex Family — App Logic */
+/* PokéDex Family — App Logic v2
+   Fixes: Kamera Hochformat, Auto-OCR via Tesseract, robuste API-Suche
+*/
 
 // ---- STATE ----
 let currentProfile = null;
 let currentCard = null;
 let cameraStream = null;
 let currentTab = 'search';
+let tesseractReady = false;
 
 // ---- STORAGE ----
 function getCollection(profile) {
@@ -27,6 +30,7 @@ function getBestPrice(card) {
   if (tcp) {
     const variant = tcp.holofoil || tcp.normal || tcp.reverseHolofoil || Object.values(tcp)[0];
     if (variant?.market) return { v: variant.market, label: 'TCGPlayer', sym: '$' };
+    if (variant?.mid)    return { v: variant.mid,    label: 'TCGPlayer Mid', sym: '$' };
   }
   return null;
 }
@@ -34,29 +38,49 @@ function fmtPrice(p) { return p ? p.sym + p.v.toFixed(2) : 'k.A.'; }
 
 // ---- API ----
 async function searchCards(query) {
-  const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:"${encodeURIComponent(query)}"&pageSize=20`);
+  // Sonderzeichen bereinigen, robuste Suche
+  const clean = query.trim().replace(/[^a-zA-ZäöüÄÖÜß\s\-]/g, '').trim();
+  if (!clean) throw new Error('Leere Suche');
+
+  // Erst exakte Suche, dann fuzzy falls keine Ergebnisse
+  let url = `https://api.pokemontcg.io/v2/cards?q=name:"${encodeURIComponent(clean)}"&pageSize=20`;
+  let res = await fetch(url);
   if (!res.ok) throw new Error('API ' + res.status);
-  return (await res.json()).data || [];
+  let data = await res.json();
+
+  // Falls keine Treffer: fuzzy (ohne Anführungszeichen)
+  if (!data.data?.length) {
+    url = `https://api.pokemontcg.io/v2/cards?q=name:${encodeURIComponent(clean)}*&pageSize=20`;
+    res = await fetch(url);
+    if (!res.ok) throw new Error('API ' + res.status);
+    data = await res.json();
+  }
+
+  return data.data || [];
 }
 
-// ---- SCREEN SWITCHING ----
+// ---- SCREEN ----
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
 }
 
 // ---- TOAST ----
-function toast(msg) {
+function toast(msg, duration = 2800) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.className = 'toast show';
-  setTimeout(() => t.className = 'toast', 2500);
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.className = 'toast', duration);
 }
 
 // ---- PROFILE ----
 function selectProfile(profile) {
   currentProfile = profile;
-  const info = { franz: { name: "Franz's PokéDex", avatar: '🦊' }, kate: { name: "Kate's PokéDex", avatar: '🌸' } };
+  const info = {
+    franz: { name: "Franz's PokéDex", avatar: '🦊' },
+    kate:  { name: "Kate's PokéDex",  avatar: '🌸' }
+  };
   document.getElementById('header-name').textContent   = info[profile].name;
   document.getElementById('header-avatar').textContent = info[profile].avatar;
   document.getElementById('detail-avatar').textContent = info[profile].avatar;
@@ -67,7 +91,8 @@ function selectProfile(profile) {
 function updateCounts() {
   ['franz', 'kate'].forEach(p => {
     const n = getCollection(p).length;
-    document.getElementById('count-' + p).textContent = n + ' Karten';
+    const el = document.getElementById('count-' + p);
+    if (el) el.textContent = n + ' Karten';
   });
 }
 
@@ -82,26 +107,39 @@ function showTab(tab) {
 }
 
 // ---- SEARCH ----
-async function doSearch() {
-  const q = document.getElementById('search-input').value.trim();
+async function doSearch(query) {
+  const q = query || document.getElementById('search-input').value.trim();
   if (!q) { toast('Bitte Namen eingeben!'); return; }
+
   stopCamera();
-  document.getElementById('loader').style.display = 'flex';
+  setLoader(true, 'Suche nach ' + q + '…');
   document.getElementById('no-results').style.display = 'none';
   document.getElementById('results-grid').innerHTML = '';
+
   try {
     const cards = await searchCards(q);
-    renderResults(cards);
+    renderResults(cards, q);
   } catch(e) {
-    toast('⚠️ Fehler – bitte nochmal versuchen.');
+    console.error(e);
+    toast('⚠️ Verbindungsfehler — bitte nochmal versuchen.');
   } finally {
-    document.getElementById('loader').style.display = 'none';
+    setLoader(false);
   }
 }
 
-function renderResults(cards) {
+function setLoader(show, text) {
+  document.getElementById('loader').style.display = show ? 'flex' : 'none';
+  if (text) document.getElementById('loader-text').textContent = text;
+}
+
+function renderResults(cards, query) {
   const grid = document.getElementById('results-grid');
-  if (!cards.length) { document.getElementById('no-results').style.display = 'block'; return; }
+  if (!cards.length) {
+    document.getElementById('no-results').style.display = 'block';
+    document.getElementById('no-results-name').textContent = query || '';
+    return;
+  }
+  window._searchResults = cards;
   grid.innerHTML = cards.map((card, i) => {
     const p = getBestPrice(card);
     return `<div class="result-card" onclick="openDetail(${i})">
@@ -113,8 +151,6 @@ function renderResults(cards) {
       </div>
     </div>`;
   }).join('');
-  // Store cards globally for onclick
-  window._searchResults = cards;
 }
 
 // ---- DETAIL ----
@@ -125,25 +161,25 @@ function openDetail(idx) {
 
   document.getElementById('detail-img').src = card.images?.large || card.images?.small || '';
   document.getElementById('detail-name').textContent = card.name;
-  document.getElementById('detail-set').textContent  = (card.set?.name || '') + (card.set?.series ? ' · ' + card.set.series : '');
+  document.getElementById('detail-set').textContent  =
+    (card.set?.name || '') + (card.set?.series ? ' · ' + card.set.series : '');
   document.getElementById('price-label').textContent = p?.label || 'Preis';
   document.getElementById('price-value').textContent = fmtPrice(p);
-  document.getElementById('price-date').textContent  = card.cardmarket?.updatedAt ? 'Stand: ' + card.cardmarket.updatedAt : '';
+  document.getElementById('price-date').textContent  =
+    card.cardmarket?.updatedAt ? 'Stand: ' + card.cardmarket.updatedAt : '';
 
-  // Badges
   let badges = '';
-  if (card.rarity)    badges += `<span class="badge b-rarity">⭐ ${card.rarity}</span>`;
+  if (card.rarity)     badges += `<span class="badge b-rarity">⭐ ${card.rarity}</span>`;
   if (card.types?.[0]) badges += `<span class="badge b-type">${card.types[0]}</span>`;
-  if (card.hp)        badges += `<span class="badge b-hp">❤️ ${card.hp} HP</span>`;
+  if (card.hp)         badges += `<span class="badge b-hp">❤️ ${card.hp} HP</span>`;
   document.getElementById('detail-badges').innerHTML = badges;
 
-  // Price rows
-  const cm = card.cardmarket?.prices;
+  const cm  = card.cardmarket?.prices;
   const tcp = card.tcgplayer?.prices;
   let rows = '';
-  if (cm?.averageSellPrice) rows += priceRow('CM Ø Verkauf',   '€' + cm.averageSellPrice.toFixed(2));
-  if (cm?.trendPrice)       rows += priceRow('CM Trend',       '€' + cm.trendPrice.toFixed(2));
-  if (cm?.lowPrice)         rows += priceRow('CM Niedrig',     '€' + cm.lowPrice.toFixed(2));
+  if (cm?.averageSellPrice) rows += priceRow('CM Ø Verkauf',  '€' + cm.averageSellPrice.toFixed(2));
+  if (cm?.trendPrice)       rows += priceRow('CM Trend',      '€' + cm.trendPrice.toFixed(2));
+  if (cm?.lowPrice)         rows += priceRow('CM Niedrig',    '€' + cm.lowPrice.toFixed(2));
   if (tcp) {
     const v = tcp.holofoil || tcp.normal || Object.values(tcp)[0];
     if (v?.low)    rows += priceRow('TCG Niedrig', '$' + v.low.toFixed(2));
@@ -152,15 +188,13 @@ function openDetail(idx) {
   }
   document.getElementById('price-rows').innerHTML = rows;
 
-  // Grading
   document.getElementById('grading-text').innerHTML =
     '💎 <b>Mint (M):</b> Perfekt — höchster Wert<br>' +
     '✨ <b>Near Mint (NM):</b> Kaum gespielt<br>' +
     '👍 <b>Excellent (EX):</b> Leichte Gebrauchsspuren<br>' +
     '📦 <b>Good (GD):</b> Sichtbare Spuren — weniger wert' +
-    (card.rarity?.includes('Rare') ? '<br><br>⭐ Seltene Karte — Zustand besonders wichtig!' : '');
+    (card.rarity?.toLowerCase().includes('rare') ? '<br><br>⭐ Seltene Karte — Zustand besonders wichtig!' : '');
 
-  // Add-Button
   const btn = document.getElementById('btn-add');
   if (isInCollection(currentProfile, card.id)) {
     btn.textContent = '✅ In Sammlung';
@@ -208,12 +242,12 @@ function removeCard(id) {
 
 function renderCollection() {
   const col = getCollection(currentProfile);
-  document.getElementById('col-empty').style.display  = col.length ? 'none' : 'block';
+  document.getElementById('col-empty').style.display  = col.length ? 'none'  : 'block';
   document.getElementById('col-header').style.display = col.length ? 'block' : 'none';
   if (!col.length) { document.getElementById('col-list').innerHTML = ''; return; }
   const total = col.reduce((s, c) => s + (c.price || 0), 0);
   document.getElementById('col-total').textContent = '€' + total.toFixed(2);
-  document.getElementById('col-count').textContent = col.length + ' Karten';
+  document.getElementById('col-count').textContent = col.length + ' Karte' + (col.length !== 1 ? 'n' : '');
   document.getElementById('col-list').innerHTML = col.map(c => `
     <div class="col-item">
       <img src="${c.image}" alt="${c.name}">
@@ -226,54 +260,156 @@ function renderCollection() {
     </div>`).join('');
 }
 
-// ---- CAMERA ----
+// ---- KAMERA (Fix: Hochformat erzwingen) ----
 async function toggleCamera() {
   if (cameraStream) { stopCamera(); return; }
   try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    document.getElementById('camera-video').srcObject = cameraStream;
+    // Hochformat erzwingen: height > width
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'environment',
+        width:  { ideal: 720 },
+        height: { ideal: 1280 }
+      }
+    });
+    const video = document.getElementById('camera-video');
+    video.srcObject = cameraStream;
     document.getElementById('camera-container').style.display = 'block';
-    toast('📷 Karte in den Rahmen halten, dann 📸 drücken');
+    toast('📷 Karte hochkant in den Rahmen halten, dann 📸 drücken');
   } catch(e) {
     toast('Kamera nicht verfügbar — bitte manuell suchen');
+    console.error(e);
   }
 }
+
 function stopCamera() {
-  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
   document.getElementById('camera-container').style.display = 'none';
 }
-function snapPhoto() {
-  const video = document.getElementById('camera-video');
+
+// ---- FOTO + AUTO-OCR ----
+async function snapPhoto() {
+  const video  = document.getElementById('camera-video');
   const canvas = document.getElementById('camera-canvas');
-  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
   canvas.getContext('2d').drawImage(video, 0, 0);
   stopCamera();
-  const name = prompt('Kartenname eingeben (steht oben auf der Karte):');
-  if (name?.trim()) { document.getElementById('search-input').value = name.trim(); doSearch(); }
+
+  // OCR versuchen
+  setLoader(true, '🔍 Lese Kartenname…');
+  try {
+    const name = await extractCardName(canvas);
+    if (name) {
+      toast('✅ Erkannt: ' + name);
+      document.getElementById('search-input').value = name;
+      await doSearch(name);
+    } else {
+      // Fallback: manuell eingeben
+      setLoader(false);
+      showManualInput();
+    }
+  } catch(e) {
+    setLoader(false);
+    console.error('OCR Fehler:', e);
+    showManualInput();
+  }
+}
+
+function showManualInput() {
+  const name = prompt('Name nicht erkannt 😔\nBitte Pokémon-Namen eingeben (steht oben auf der Karte):');
+  if (name?.trim()) {
+    document.getElementById('search-input').value = name.trim();
+    doSearch(name.trim());
+  }
+}
+
+// ---- OCR via Tesseract.js ----
+async function extractCardName(canvas) {
+  // Tesseract.js aus CDN laden falls noch nicht geladen
+  if (!window.Tesseract) {
+    await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+  }
+
+  // Nur oberes Drittel der Karte ausschneiden (dort steht der Name)
+  const cropCanvas = document.createElement('canvas');
+  const cropH = Math.floor(canvas.height * 0.18); // obere 18% = Namensbereich
+  cropCanvas.width  = canvas.width;
+  cropCanvas.height = cropH;
+  cropCanvas.getContext('2d').drawImage(canvas, 0, 0, canvas.width, cropH, 0, 0, canvas.width, cropH);
+
+  // Kontrast erhöhen für bessere OCR
+  enhanceContrast(cropCanvas);
+
+  const { data: { text } } = await Tesseract.recognize(cropCanvas, 'eng', {
+    logger: () => {}
+  });
+
+  // Text bereinigen: nur Buchstaben, Leerzeichen, Bindestriche
+  const cleaned = text
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l.length > 2 && /[A-Za-z]/.test(l))
+    .map(l => l.replace(/[^A-Za-zÄÖÜäöüß\s\-]/g, '').trim())
+    .filter(l => l.length > 2)[0]; // erste sinnvolle Zeile
+
+  return cleaned || null;
+}
+
+function enhanceContrast(canvas) {
+  const ctx = canvas.getContext('2d');
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    // Graustufen + Kontrast erhöhen
+    const avg = (d[i] + d[i+1] + d[i+2]) / 3;
+    const val = avg > 128 ? Math.min(255, avg * 1.3) : Math.max(0, avg * 0.7);
+    d[i] = d[i+1] = d[i+2] = val;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
 }
 
 // ---- CARDMARKET ----
 function openCardmarket() {
   if (!currentCard) return;
-  window.open('https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=' + encodeURIComponent(currentCard.name), '_blank');
+  window.open(
+    'https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=' +
+    encodeURIComponent(currentCard.name), '_blank'
+  );
 }
 
 // ---- INIT ----
 document.addEventListener('DOMContentLoaded', () => {
   updateCounts();
 
-  document.getElementById('btn-franz').addEventListener('click', () => selectProfile('franz'));
-  document.getElementById('btn-kate').addEventListener('click',  () => selectProfile('kate'));
-  document.getElementById('btn-back').addEventListener('click',  () => { stopCamera(); updateCounts(); showScreen('screen-profile'); });
+  document.getElementById('btn-franz').addEventListener('click',       () => selectProfile('franz'));
+  document.getElementById('btn-kate').addEventListener('click',        () => selectProfile('kate'));
+  document.getElementById('btn-back').addEventListener('click',        () => { stopCamera(); updateCounts(); showScreen('screen-profile'); });
   document.getElementById('btn-back-detail').addEventListener('click', () => showScreen('screen-main'));
-  document.getElementById('btn-search').addEventListener('click', doSearch);
-  document.getElementById('btn-cam').addEventListener('click', toggleCamera);
-  document.getElementById('btn-snap').addEventListener('click', snapPhoto);
-  document.getElementById('tab-search').addEventListener('click', () => showTab('search'));
-  document.getElementById('tab-col').addEventListener('click',    () => showTab('collection'));
-  document.getElementById('btn-add').addEventListener('click', addCard);
-  document.getElementById('btn-cm').addEventListener('click', openCardmarket);
-  document.getElementById('search-input').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+  document.getElementById('btn-search').addEventListener('click',      () => doSearch());
+  document.getElementById('btn-cam').addEventListener('click',         toggleCamera);
+  document.getElementById('btn-snap').addEventListener('click',        snapPhoto);
+  document.getElementById('tab-search').addEventListener('click',      () => showTab('search'));
+  document.getElementById('tab-col').addEventListener('click',         () => showTab('collection'));
+  document.getElementById('btn-add').addEventListener('click',         addCard);
+  document.getElementById('btn-cm').addEventListener('click',          openCardmarket);
+  document.getElementById('search-input').addEventListener('keydown',  e => { if (e.key === 'Enter') doSearch(); });
+
+  // Tesseract vorladen im Hintergrund
+  loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js')
+    .then(() => console.log('OCR bereit'))
+    .catch(() => console.log('OCR wird bei Bedarf geladen'));
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

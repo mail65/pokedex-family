@@ -55,7 +55,7 @@
     </div>
 
     <div id="camera-container" style="display:none">
-      <video id="camera-video" autoplay playsinline muted></video>
+      <video id="camera-video" autoplay playsinline muted style="width:100%;max-height:420px;object-fit:cover;display:block;"></video>
       <div class="cam-overlay">
         <button class="btn-snap" id="btn-snap">📸</button>
       </div>
@@ -69,11 +69,11 @@
         <rect x="2" y="46" width="96" height="8" fill="#222"/>
         <circle cx="50" cy="50" r="14" fill="white" stroke="#222" stroke-width="4"/>
       </svg>
-      <div class="loader-text">Suche…</div>
+      <div class="loader-text" id="loader-text">Suche…</div>
     </div>
 
     <div id="no-results" style="display:none" class="empty-state">
-      <div>😔</div><p>Nichts gefunden – anderen Namen versuchen?</p>
+      <div>😔</div><p>"<span id="no-results-name"></span>" nicht gefunden<br>Anderen Namen versuchen?</p>
     </div>
 
     <div id="results-grid" class="results-grid"></div>
