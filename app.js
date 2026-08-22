@@ -289,6 +289,7 @@ async function addCard() {
     id:    currentCard.id,
     name:  currentCard.name,
     set:   currentCard.set?.name || '',
+    type:  currentCard.types?.[0] || '',
     image: currentCard.images?.small || '',
     price: p?.v || 0,
     sym:   p?.sym || '€',
@@ -307,12 +308,16 @@ async function addCard() {
   await updateCounts();
 }
 
-async function removeCard(id) {
+async function removeCard(id, name) {
+  // Bestätigung bevor löschen
+  if (!confirm(`"${name}" wirklich aus der Sammlung entfernen?`)) return;
   await deleteCard(currentProfile, id);
-  toast('🗑️ Entfernt');
+  toast('🗑️ ' + name + ' entfernt');
   await updateCounts();
   renderCollection();
 }
+
+let colSortMode = 'price'; // 'price' | 'name' | 'type'
 
 async function renderCollection() {
   document.getElementById('col-empty').style.display = 'block';
@@ -332,11 +337,22 @@ async function renderCollection() {
   document.getElementById('col-header').style.display = 'block';
 
   const total = col.reduce((s, c) => s + (c.price || 0), 0);
+  const best  = col.reduce((a, b) => (b.price||0) > (a.price||0) ? b : a, col[0]);
+
   document.getElementById('col-total').textContent = '€' + total.toFixed(2);
   document.getElementById('col-count').textContent = col.length + ' Karte' + (col.length !== 1 ? 'n' : '');
+  document.getElementById('col-best').textContent  = best ? '👑 ' + best.name + ' (€' + (best.price||0).toFixed(2) + ')' : '';
 
-  // Sortiert: teuerste zuerst
-  const sorted = [...col].sort((a, b) => (b.price || 0) - (a.price || 0));
+  // Sortierung
+  let sorted = [...col];
+  if (colSortMode === 'price') sorted.sort((a,b) => (b.price||0) - (a.price||0));
+  if (colSortMode === 'name')  sorted.sort((a,b) => a.name.localeCompare(b.name));
+  if (colSortMode === 'type')  sorted.sort((a,b) => (a.type||'').localeCompare(b.type||''));
+
+  // Sortier-Buttons updaten
+  document.querySelectorAll('.sort-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.sort === colSortMode);
+  });
 
   sorted.forEach(c => {
     const item = document.createElement('div');
@@ -347,15 +363,16 @@ async function renderCollection() {
 
     const info = document.createElement('div');
     info.className = 'col-item-info';
+    const typeTag = c.type ? `<span class="col-type-badge">${esc(c.type)}</span>` : '';
     info.innerHTML = `
       <div class="col-item-name">${esc(c.name)}</div>
-      <div class="col-item-set">${esc(c.set)}</div>
+      <div class="col-item-set">${esc(c.set)} ${typeTag}</div>
       <div class="col-item-price">${esc(c.sym)}${(c.price||0).toFixed(2)}</div>`;
 
     const btn = document.createElement('button');
     btn.className = 'btn-remove';
     btn.textContent = '🗑️';
-    btn.addEventListener('click', () => removeCard(c.id));
+    btn.addEventListener('click', () => removeCard(c.id, c.name));
 
     item.appendChild(img);
     item.appendChild(info);
@@ -481,6 +498,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Klick außerhalb schließt Autosuggest
   document.addEventListener('click', e => {
     if (!e.target.closest('.search-wrap')) closeAutocomplete();
+  });
+
+  // Sortier-Buttons
+  document.querySelectorAll('.sort-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      colSortMode = btn.dataset.sort;
+      renderCollection();
+    });
   });
 
   if ('serviceWorker' in navigator) {

@@ -93,9 +93,18 @@
   <!-- Sammlung -->
   <div class="content" id="content-collection" style="display:none">
     <div id="col-header" class="col-header" style="display:none">
-      <div class="col-label">Gesamtwert der Sammlung</div>
-      <div class="col-total" id="col-total">€0.00</div>
-      <div class="col-count" id="col-count">0 Karten</div>
+      <div class="col-total-box">
+        <div class="col-label">💰 Gesamtwert</div>
+        <div class="col-total" id="col-total">€0.00</div>
+        <div class="col-count" id="col-count">0 Karten</div>
+      </div>
+      <div class="col-best" id="col-best"></div>
+      <div class="sort-bar">
+        <span class="sort-label">Sortieren:</span>
+        <button class="sort-btn active" data-sort="price">💰 Wert</button>
+        <button class="sort-btn" data-sort="name">🔤 Name</button>
+        <button class="sort-btn" data-sort="type">⚡ Typ</button>
+      </div>
     </div>
     <div id="col-empty" class="empty-state">
       <div>📦</div><p>Noch keine Karten!<br>Suche nach Pokémon und füge welche hinzu.</p>
