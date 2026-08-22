@@ -27,6 +27,50 @@ body {
   padding: 40px 20px;
   padding-top: 80px;
   padding-top: calc(env(safe-area-inset-top, 44px) + 40px);
+  overflow: hidden;
+  position: relative;
+}
+
+/* FLIEGENDE POKÉMON */
+.pokemon-parade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.poke {
+  position: absolute;
+  font-size: 42px;
+  animation: fly linear infinite;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+  opacity: 0.85;
+}
+
+@keyframes fly {
+  0%   { transform: translateX(110vw) translateY(0) scaleX(-1); }
+  50%  { transform: translateX(50vw)  translateY(-30px) scaleX(-1); }
+  100% { transform: translateX(-20vw) translateY(0) scaleX(-1); }
+}
+
+/* Jedes Pokémon bekommt eigene Startposition, Größe, Geschwindigkeit */
+.p1 { top: 12%;  font-size: 52px; animation-duration: 7s;  animation-delay: 0s;    }
+.p2 { top: 28%;  font-size: 38px; animation-duration: 9s;  animation-delay: -2s;   }
+.p3 { top: 55%;  font-size: 46px; animation-duration: 6s;  animation-delay: -4s;   }
+.p4 { top: 72%;  font-size: 34px; animation-duration: 11s; animation-delay: -1s;   }
+.p5 { top: 40%;  font-size: 50px; animation-duration: 8s;  animation-delay: -5s;   }
+.p6 { top: 18%;  font-size: 36px; animation-duration: 10s; animation-delay: -3s;   }
+.p7 { top: 62%;  font-size: 44px; animation-duration: 7.5s; animation-delay: -6s;  }
+.p8 { top: 83%;  font-size: 40px; animation-duration: 9.5s; animation-delay: -1.5s; }
+
+/* Jedes 2. fliegt andersrum */
+.p2, .p4, .p6, .p8 {
+  animation-name: fly-reverse;
+}
+@keyframes fly-reverse {
+  0%   { transform: translateX(-20vw) translateY(0); }
+  50%  { transform: translateX(50vw)  translateY(25px); }
+  100% { transform: translateX(110vw) translateY(0); }
 }
 
 .pokeball-icon {
