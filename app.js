@@ -52,14 +52,13 @@ async function searchCards(query) {
   const clean = query.trim().replace(/[^a-zA-ZäöüÄÖÜß\s\-]/g, '').trim();
   if (!clean) throw new Error('Leere Suche');
 
-  // FIX: Anführungszeichen direkt in URL — NICHT encodeURIComponent!
-  // Nur den Namen selbst encoden, nicht die Syntax-Zeichen
-  let url = `https://api.pokemontcg.io/v2/cards?q=name:"${encodeURIComponent(clean).replace(/%22/g, '"')}"&pageSize=20`;
+  // Ohne Anführungszeichen — API akzeptiert das zuverlässig
+  let url = `https://api.pokemontcg.io/v2/cards?q=name:${encodeURIComponent(clean)}&pageSize=20`;
   let res = await fetchWithTimeout(url);
   if (!res.ok) throw new Error('API ' + res.status);
   let data = await res.json();
 
-  // Fuzzy-Fallback ohne Anführungszeichen
+  // Fuzzy-Fallback mit Wildcard
   if (!data.data?.length) {
     url = `https://api.pokemontcg.io/v2/cards?q=name:${encodeURIComponent(clean)}*&pageSize=20`;
     res = await fetchWithTimeout(url);
