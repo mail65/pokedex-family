@@ -573,12 +573,6 @@ async function renderCollection() {
 
     const info = document.createElement('div');
     info.className = 'col-item-info';
-    const typeTag = c.type ? `<span class="col-type-badge">${esc(c.type)}</span>` : '';
-    info.innerHTML = `
-      <div class="col-item-name">${esc(c.name)}</div>
-      <div class="col-item-set">${esc(c.set)} ${typeTag}</div>
-      <div class="col-item-price">${esc(c.sym)}${(c.price||0).toFixed(2)}</div>`;
-
     // Typ-Badge
     const typeMap = {
       'Fire':      { de: '🔥 Feuer',    color: '#FF9A3C' },
@@ -676,7 +670,7 @@ async function fetchSuggestions(q) {
     } catch(e) {
       if (e.name !== 'AbortError') closeAutocomplete();
     }
-  }, 350);
+  }, 600);
 }
 
 function renderAutocomplete(cards) {
@@ -721,11 +715,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-add').addEventListener('click',         addCard);
   document.getElementById('btn-cm').addEventListener('click',          openCardmarket);
 
-  // Schnellsuche
+  // Schnellsuche — alles Deutsch, Übersetzung passiert automatisch
   document.getElementById('qs-pikachu').addEventListener('click',   () => quickSearch('Pikachu'));
-  document.getElementById('qs-charizard').addEventListener('click', () => quickSearch('Charizard'));
-  document.getElementById('qs-mewtwo').addEventListener('click',    () => quickSearch('Mewtwo'));
-  document.getElementById('qs-eevee').addEventListener('click',     () => quickSearch('Eevee'));
+  document.getElementById('qs-charizard').addEventListener('click', () => quickSearch('Glurak'));
+  document.getElementById('qs-mewtwo').addEventListener('click',    () => quickSearch('Mewtu'));
+  document.getElementById('qs-eevee').addEventListener('click',     () => quickSearch('Evoli'));
 
   // Suche
   document.getElementById('btn-search').addEventListener('click', () => { closeAutocomplete(); doSearch(); });
