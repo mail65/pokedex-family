@@ -1,79 +1,79 @@
-/* PokéDex Family — Startbildschirm Parade
-   Echte Pokémon-Sprites von PokeAPI + CSS-Animationen
+/* PokéDex Family — Startbildschirm Parade v2
+   FIX: Lane-Animation + Bounce-Animation kombiniert via CSS-Klassen
 */
 
-// Bekannte, ikonische Pokémon-IDs
 const PARADE_POKEMON = [
-  { id: 6,   name: 'Glurak'    },  // Charizard
-  { id: 25,  name: 'Pikachu'   },
-  { id: 150, name: 'Mewtu'     },  // Mewtwo
-  { id: 143, name: 'Relaxo'    },  // Snorlax
-  { id: 131, name: 'Lapras'    },
-  { id: 94,  name: 'Gengar'    },
-  { id: 130, name: 'Garados'   },  // Gyarados
-  { id: 149, name: 'Dragoran'  },  // Dragonite
-  { id: 196, name: 'Psiana'    },  // Espeon
-  { id: 197, name: 'Nachtara'  },  // Umbreon
-  { id: 249, name: 'Lugia'     },
-  { id: 384, name: 'Rayquaza'  },
-  { id: 448, name: 'Lucario'   },
-  { id: 445, name: 'Knakrack'  },  // Garchomp
-  { id: 248, name: 'Despotar'  },  // Tyranitar
+  { id: 6,   name: 'Glurak'   },
+  { id: 25,  name: 'Pikachu'  },
+  { id: 150, name: 'Mewtu'    },
+  { id: 143, name: 'Relaxo'   },
+  { id: 131, name: 'Lapras'   },
+  { id: 94,  name: 'Gengar'   },
+  { id: 149, name: 'Dragoran' },
+  { id: 249, name: 'Lugia'    },
+  { id: 384, name: 'Rayquaza' },
+  { id: 448, name: 'Lucario'  },
+  { id: 196, name: 'Psiana'   },
+  { id: 248, name: 'Despotar' },
 ];
-
-// Sprite-URL (offizielle PokeAPI, kostenlos)
-function spriteUrl(id) {
-  // Animated Gen5 sprites — pixelig und flüssig animiert!
-  return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
-}
 
 function createParade() {
   const container = document.getElementById('pokemon-parade');
   if (!container) return;
   container.innerHTML = '';
 
-  // Zufällige Auswahl von 8 Pokémon
   const shuffled = [...PARADE_POKEMON].sort(() => Math.random() - 0.5).slice(0, 8);
 
   shuffled.forEach((poke, i) => {
+    const goRight  = i % 2 === 0;
+    const duration = 7 + Math.random() * 7;       // 7–14s
+    const delay    = -(Math.random() * duration);  // sofort sichtbar
+    const topPct   = 5 + (i * 12) % 82;
+    const size     = 72 + Math.random() * 56;      // 72–128px
+    const bounce   = 0.35 + Math.random() * 0.25;  // 0.35–0.6s
+
+    // Wrapper bewegt sich horizontal
     const lane = document.createElement('div');
     lane.className = 'parade-lane';
+    lane.style.cssText = `
+      top: ${topPct}%;
+      animation-name: ${goRight ? 'parade-right' : 'parade-left'};
+      animation-duration: ${duration}s;
+      animation-delay: ${delay}s;
+      animation-timing-function: linear;
+      animation-iteration-count: infinite;
+    `;
+
+    // Inner-Wrapper macht Bounce (separate Animation!)
+    const inner = document.createElement('div');
+    inner.className = 'parade-inner';
+    inner.style.cssText = `
+      animation-name: parade-bounce;
+      animation-duration: ${bounce}s;
+      animation-delay: ${delay}s;
+      animation-timing-function: ease-in-out;
+      animation-iteration-count: infinite;
+      animation-direction: alternate;
+    `;
 
     const img = document.createElement('img');
-    img.src = spriteUrl(poke.id);
+    img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${poke.id}.png`;
     img.alt = poke.name;
     img.className = 'parade-sprite';
     img.draggable = false;
-
-    // Jedes Pokémon bekommt eigene Spur, Geschwindigkeit, Größe
-    const goRight  = i % 2 === 0;
-    const duration = 6 + Math.random() * 8;        // 6–14s
-    const delay    = -(Math.random() * duration);   // Sofort sichtbar
-    const topPct   = 8 + (i * 11) % 80;            // Gleichmäßig verteilt
-    const size     = 70 + Math.random() * 60;       // 70–130px
-
-    lane.style.cssText = `
-      top: ${topPct}%;
-      animation-duration: ${duration}s;
-      animation-delay: ${delay}s;
-      animation-name: ${goRight ? 'parade-right' : 'parade-left'};
-    `;
     img.style.cssText = `
       width: ${size}px;
       height: ${size}px;
       transform: scaleX(${goRight ? 1 : -1});
-      filter: drop-shadow(0 4px 12px rgba(0,0,0,0.4));
+      filter: drop-shadow(0 6px 16px rgba(0,0,0,0.45));
     `;
 
-    // Bounce-Animation beim Laufen
-    img.style.animation = `bounce ${0.4 + Math.random() * 0.3}s ease-in-out infinite alternate`;
-
-    lane.appendChild(img);
+    inner.appendChild(img);
+    lane.appendChild(inner);
     container.appendChild(lane);
   });
 }
 
-// Starten sobald DOM fertig
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', createParade);
 } else {
