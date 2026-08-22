@@ -48,27 +48,24 @@
   </header>
 
   <div class="content" id="content-search">
+    <!-- Suchfeld -->
     <div class="search-bar">
-      <input type="text" id="search-input" class="search-input" placeholder="Pokémon-Name…" autocomplete="off" autocorrect="off" spellcheck="false">
-      <button class="btn-icon yellow" id="btn-cam">📷</button>
+      <input type="text" id="search-input" class="search-input"
+        placeholder="Pokémon-Name eingeben…"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
       <button class="btn-icon red" id="btn-search">🔍</button>
     </div>
 
-    <div id="camera-container" style="display:none">
-      <video id="camera-video" autoplay playsinline muted></video>
-      <div class="cam-overlay">
-        <div class="cam-hint">Karte hochkant halten — Name oben sichtbar</div>
-        <button class="btn-snap" id="btn-snap">📸 Foto machen</button>
-      </div>
-      <canvas id="camera-canvas" style="display:none"></canvas>
+    <!-- Schnellsuche Buttons -->
+    <div class="quick-search">
+      <span class="qs-label">Beliebte:</span>
+      <button class="qs-btn" onclick="quickSearch('Pikachu')">Pikachu</button>
+      <button class="qs-btn" onclick="quickSearch('Charizard')">Glurak</button>
+      <button class="qs-btn" onclick="quickSearch('Mewtwo')">Mewtu</button>
+      <button class="qs-btn" onclick="quickSearch('Eevee')">Evoli</button>
     </div>
 
-    <!-- Foto-Vorschau nach Snap -->
-    <div id="snap-preview-box" style="display:none; margin-bottom:12px;">
-      <img id="snap-preview" style="width:100%;border-radius:12px;max-height:200px;object-fit:contain;background:#f0f0f0;">
-      <p style="text-align:center;font-size:13px;color:#666;margin-top:8px;">📝 Gib jetzt den Namen oben auf der Karte ein:</p>
-    </div>
-
+    <!-- Loader -->
     <div id="loader" class="loader" style="display:none">
       <svg class="pokeball-spin" viewBox="0 0 100 100">
         <circle cx="50" cy="50" r="48" fill="white" stroke="#ddd" stroke-width="4"/>
@@ -79,21 +76,26 @@
       <div class="loader-text" id="loader-text">Suche…</div>
     </div>
 
+    <!-- Keine Ergebnisse -->
     <div id="no-results" style="display:none" class="empty-state">
-      <div>😔</div><p>"<span id="no-results-name"></span>" nicht gefunden<br>Anderen Namen versuchen?</p>
+      <div>😔</div>
+      <p>"<span id="no-results-name"></span>" nicht gefunden<br>
+      Tipp: Englischen Namen versuchen!</p>
     </div>
 
+    <!-- Ergebnisse -->
     <div id="results-grid" class="results-grid"></div>
   </div>
 
+  <!-- Sammlung -->
   <div class="content" id="content-collection" style="display:none">
     <div id="col-header" class="col-header" style="display:none">
-      <div class="col-label">Gesamtwert</div>
+      <div class="col-label">Gesamtwert der Sammlung</div>
       <div class="col-total" id="col-total">€0.00</div>
       <div class="col-count" id="col-count">0 Karten</div>
     </div>
     <div id="col-empty" class="empty-state">
-      <div>📦</div><p>Noch keine Karten!<br>Suche und füge welche hinzu.</p>
+      <div>📦</div><p>Noch keine Karten!<br>Suche nach Pokémon und füge welche hinzu.</p>
     </div>
     <div id="col-list"></div>
   </div>
@@ -129,23 +131,13 @@
       </div>
     </div>
     <div class="detail-actions">
-      <button class="btn-add" id="btn-add">⭐ Zur Sammlung</button>
-      <button class="btn-cm" id="btn-cm">🛒</button>
+      <button class="btn-add" id="btn-add">⭐ Zur Sammlung hinzufügen</button>
+      <button class="btn-cm" id="btn-cm" title="Cardmarket">🛒</button>
     </div>
   </div>
 </div>
 
 <div id="toast"></div>
-
-<script>
-// Service Worker komplett deregistrieren + alle Caches löschen
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(regs => {
-    regs.forEach(r => r.unregister());
-  });
-  caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
-}
-</script>
-<script src="app.js?v=20260822-5"></script>
+<script src="app.js"></script>
 </body>
 </html>
