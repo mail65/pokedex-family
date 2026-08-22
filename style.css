@@ -54,23 +54,34 @@ body {
 }
 
 /* Jedes Pokémon bekommt eigene Startposition, Größe, Geschwindigkeit */
-.p1 { top: 12%;  font-size: 52px; animation-duration: 7s;  animation-delay: 0s;    }
-.p2 { top: 28%;  font-size: 38px; animation-duration: 9s;  animation-delay: -2s;   }
-.p3 { top: 55%;  font-size: 46px; animation-duration: 6s;  animation-delay: -4s;   }
-.p4 { top: 72%;  font-size: 34px; animation-duration: 11s; animation-delay: -1s;   }
-.p5 { top: 40%;  font-size: 50px; animation-duration: 8s;  animation-delay: -5s;   }
-.p6 { top: 18%;  font-size: 36px; animation-duration: 10s; animation-delay: -3s;   }
-.p7 { top: 62%;  font-size: 44px; animation-duration: 7.5s; animation-delay: -6s;  }
-.p8 { top: 83%;  font-size: 40px; animation-duration: 9.5s; animation-delay: -1.5s; }
-
-/* Jedes 2. fliegt andersrum */
-.p2, .p4, .p6, .p8 {
-  animation-name: fly-reverse;
+/* Parade Lanes */
+.parade-lane {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  animation: parade-left linear infinite;
+  will-change: transform;
 }
-@keyframes fly-reverse {
-  0%   { transform: translateX(-20vw) translateY(0); }
-  50%  { transform: translateX(50vw)  translateY(25px); }
-  100% { transform: translateX(110vw) translateY(0); }
+
+.parade-sprite {
+  display: block;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
+@keyframes parade-left {
+  0%   { transform: translateX(110vw); }
+  100% { transform: translateX(-160px); }
+}
+
+@keyframes parade-right {
+  0%   { transform: translateX(-160px); }
+  100% { transform: translateX(110vw); }
+}
+
+@keyframes bounce {
+  0%   { transform: scaleX(var(--flip, 1)) translateY(0px); }
+  100% { transform: scaleX(var(--flip, 1)) translateY(-12px); }
 }
 
 .pokeball-icon {
