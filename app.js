@@ -7,7 +7,7 @@
 
 // ---- FIREBASE CONFIG ----
 // Kostenloser Spark Plan — keine Kreditkarte nötig
-const FIREBASE_URL = 'https://pokedex-family-default-rtdb.europe-west1.firebasedatabase.app';
+const FIREBASE_URL = 'https://pokemon-efef7-default-rtdb.europe-west1.firebasedatabase.app';
 
 // ---- STATE ----
 let currentProfile = null;
