@@ -55,11 +55,18 @@
     </div>
 
     <div id="camera-container" style="display:none">
-      <video id="camera-video" autoplay playsinline muted style="width:100%;max-height:420px;object-fit:cover;display:block;"></video>
+      <video id="camera-video" autoplay playsinline muted></video>
       <div class="cam-overlay">
-        <button class="btn-snap" id="btn-snap">📸</button>
+        <div class="cam-hint">Karte hochkant halten — Name oben sichtbar</div>
+        <button class="btn-snap" id="btn-snap">📸 Foto machen</button>
       </div>
       <canvas id="camera-canvas" style="display:none"></canvas>
+    </div>
+
+    <!-- Foto-Vorschau nach Snap -->
+    <div id="snap-preview-box" style="display:none; margin-bottom:12px;">
+      <img id="snap-preview" style="width:100%;border-radius:12px;max-height:200px;object-fit:contain;background:#f0f0f0;">
+      <p style="text-align:center;font-size:13px;color:#666;margin-top:8px;">📝 Gib jetzt den Namen oben auf der Karte ein:</p>
     </div>
 
     <div id="loader" class="loader" style="display:none">

@@ -290,8 +290,8 @@ function stopCamera() {
   document.getElementById('camera-container').style.display = 'none';
 }
 
-// ---- FOTO + AUTO-OCR ----
-async function snapPhoto() {
+// ---- FOTO ----
+function snapPhoto() {
   const video  = document.getElementById('camera-video');
   const canvas = document.getElementById('camera-canvas');
   canvas.width  = video.videoWidth;
@@ -299,77 +299,13 @@ async function snapPhoto() {
   canvas.getContext('2d').drawImage(video, 0, 0);
   stopCamera();
 
-  // OCR versuchen
-  setLoader(true, '🔍 Lese Kartenname…');
-  try {
-    const name = await extractCardName(canvas);
-    if (name) {
-      toast('✅ Erkannt: ' + name);
-      document.getElementById('search-input').value = name;
-      await doSearch(name);
-    } else {
-      // Fallback: manuell eingeben
-      setLoader(false);
-      showManualInput();
-    }
-  } catch(e) {
-    setLoader(false);
-    console.error('OCR Fehler:', e);
-    showManualInput();
-  }
-}
-
-function showManualInput() {
-  const name = prompt('Name nicht erkannt 😔\nBitte Pokémon-Namen eingeben (steht oben auf der Karte):');
-  if (name?.trim()) {
-    document.getElementById('search-input').value = name.trim();
-    doSearch(name.trim());
-  }
-}
-
-// ---- OCR via Tesseract.js ----
-async function extractCardName(canvas) {
-  // Tesseract.js aus CDN laden falls noch nicht geladen
-  if (!window.Tesseract) {
-    await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
-  }
-
-  // Nur oberes Drittel der Karte ausschneiden (dort steht der Name)
-  const cropCanvas = document.createElement('canvas');
-  const cropH = Math.floor(canvas.height * 0.18); // obere 18% = Namensbereich
-  cropCanvas.width  = canvas.width;
-  cropCanvas.height = cropH;
-  cropCanvas.getContext('2d').drawImage(canvas, 0, 0, canvas.width, cropH, 0, 0, canvas.width, cropH);
-
-  // Kontrast erhöhen für bessere OCR
-  enhanceContrast(cropCanvas);
-
-  const { data: { text } } = await Tesseract.recognize(cropCanvas, 'eng', {
-    logger: () => {}
-  });
-
-  // Text bereinigen: nur Buchstaben, Leerzeichen, Bindestriche
-  const cleaned = text
-    .split('\n')
-    .map(l => l.trim())
-    .filter(l => l.length > 2 && /[A-Za-z]/.test(l))
-    .map(l => l.replace(/[^A-Za-zÄÖÜäöüß\s\-]/g, '').trim())
-    .filter(l => l.length > 2)[0]; // erste sinnvolle Zeile
-
-  return cleaned || null;
-}
-
-function enhanceContrast(canvas) {
-  const ctx = canvas.getContext('2d');
-  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    // Graustufen + Kontrast erhöhen
-    const avg = (d[i] + d[i+1] + d[i+2]) / 3;
-    const val = avg > 128 ? Math.min(255, avg * 1.3) : Math.max(0, avg * 0.7);
-    d[i] = d[i+1] = d[i+2] = val;
-  }
-  ctx.putImageData(img, 0, 0);
+  // Foto-Vorschau anzeigen + Suchfeld fokussieren
+  document.getElementById('snap-preview').src = canvas.toDataURL('image/jpeg', 0.8);
+  document.getElementById('snap-preview-box').style.display = 'block';
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-input').placeholder = 'Pokémon-Name eingeben…';
+  document.getElementById('search-input').focus();
+  toast('📸 Foto gemacht! Bitte Namen oben auf der Karte eintippen 👆');
 }
 
 function loadScript(src) {
@@ -404,12 +340,20 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('tab-col').addEventListener('click',         () => showTab('collection'));
   document.getElementById('btn-add').addEventListener('click',         addCard);
   document.getElementById('btn-cm').addEventListener('click',          openCardmarket);
-  document.getElementById('search-input').addEventListener('keydown',  e => { if (e.key === 'Enter') doSearch(); });
+  document.getElementById('search-input').addEventListener('keydown',  e => {
+    if (e.key === 'Enter') {
+      document.getElementById('snap-preview-box').style.display = 'none';
+      doSearch();
+    }
+  });
 
-  // Tesseract vorladen im Hintergrund
-  loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js')
-    .then(() => console.log('OCR bereit'))
-    .catch(() => console.log('OCR wird bei Bedarf geladen'));
+  // Foto-Vorschau schließen bei Suche
+  document.getElementById('btn-search').addEventListener('click', () => {
+    document.getElementById('snap-preview-box').style.display = 'none';
+  });
+  document.getElementById('search-input').addEventListener('keydown', () => {
+    document.getElementById('snap-preview-box').style.display = 'none';
+  });
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
