@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#EE1515">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PokéDex Family">
+  <meta name="description" content="Pokémon Karten-Wert-Checker für die ganze Familie">
+  <title>PokéDex Family</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/pokeball-192.png">
+  <link rel="icon" type="image/png" href="icons/pokeball-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ====== SCREEN: PROFIL AUSWAHL ====== -->
+  <section id="screen-profile" class="screen active">
+    <div class="profile-header">
+      <h1 class="logo-title">PokéDex <span>Family</span></h1>
+      <p class="logo-sub">Karten-Wert-Checker</p>
+    </div>
+    <div class="profile-pick">
+      <p class="pick-label">Wer spielt heute?</p>
+      <div class="profile-cards">
+        <button class="profile-btn" data-profile="franz" aria-label="Franz Profil wählen">
+          <div class="profile-avatar fox">🦊</div>
+          <span class="profile-name">Franz</span>
+          <span class="profile-count" id="count-franz">0 Karten</span>
+        </button>
+        <button class="profile-btn" data-profile="kate" aria-label="Kate Profil wählen">
+          <div class="profile-avatar flower">🌸</div>
+          <span class="profile-name">Kate</span>
+          <span class="profile-count" id="count-kate">0 Karten</span>
+        </button>
+      </div>
+    </div>
+    <footer class="profile-footer">✨ Deine Sammlung, dein Wert ✨</footer>
+  </section>
+
+  <!-- ====== SCREEN: MAIN APP ====== -->
+  <section id="screen-main" class="screen">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <button id="btn-back-to-profile" class="icon-btn" aria-label="Profil wechseln">👤</button>
+      <div class="top-title">
+        <span class="top-name" id="top-profile-name">Franz</span>
+        <span class="top-avatar" id="top-profile-avatar">🦊</span>
+      </div>
+      <button id="btn-collection" class="icon-btn" aria-label="Sammlung öffnen">🎒</button>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Search / Scan -->
+      <div class="search-card" id="search-card">
+        <h2 class="section-title">Karte suchen</h2>
+        <div class="search-row">
+          <input type="text" id="search-input" placeholder="Name eingeben… z.B. Pikachu" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button id="btn-search" class="btn-primary" aria-label="Suchen">🔍</button>
+        </div>
+        <button id="btn-camera" class="btn-camera">
+          <span class="camera-icon">📷</span>
+          <span>Mit Kamera scannen</span>
+        </button>
+        <div class="camera-hint" id="camera-hint" hidden>
+          <p>Tipp: Halte die Karte vor die Kamera und drücke auf den Auslöser. Danach kannst du den Namen bestätigen oder anpassen.</p>
+        </div>
+      </div>
+
+      <!-- Camera Viewfinder -->
+      <div id="camera-view" hidden>
+        <video id="camera-video" autoplay playsinline muted></video>
+        <div class="camera-controls">
+          <button id="btn-shutter" class="btn-shutter" aria-label="Foto machen">📸</button>
+          <button id="btn-camera-close" class="btn-ghost" aria-label="Kamera schließen">✖ Schließen</button>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div id="loading" class="loading" hidden>
+        <div class="pokeball-loader" aria-label="Lädt…"></div>
+        <p id="loading-text">Suche Karte…</p>
+      </div>
+
+      <!-- Error -->
+      <div id="error-box" class="error-box" hidden></div>
+
+      <!-- Search Results -->
+      <div id="results" class="results" hidden></div>
+
+      <!-- Card Detail -->
+      <div id="detail" class="detail" hidden></div>
+
+      <!-- Collection -->
+      <div id="collection" class="collection" hidden></div>
+    </main>
+
+    <!-- Bottom Nav -->
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-view="search" aria-label="Suche">🔍<span>Suche</span></button>
+      <button class="nav-btn" data-view="collection" aria-label="Sammlung">🎒<span>Sammlung</span></button>
+    </nav>
+  </section>
+
+  <!-- ====== CAMERA MODAL (für Foto) ====== -->
+  <div id="modal-camera" class="modal" hidden>
+    <div class="modal-box">
+      <p class="modal-title">📷 Karte scannen</p>
+      <p class="modal-sub">Richte die Karte gerade aus und drücke den Auslöser.</p>
+      <video id="modal-video" autoplay playsinline muted></video>
+      <canvas id="modal-canvas" hidden></canvas>
+      <div class="modal-actions">
+        <button id="modal-shutter" class="btn-shutter" aria-label="Foto machen">📸</button>
+      </div>
+      <button id="modal-close" class="btn-ghost">✖ Abbrechen</button>
+    </div>
+  </div>
+
+  <!-- ====== CONFIRM MODAL (Name bestätigen) ====== -->
+  <div id="modal-confirm" class="modal" hidden>
+    <div class="modal-box">
+      <p class="modal-title">Ist das deine Karte?</p>
+      <img id="confirm-image" class="confirm-image" alt="Aufgenommenes Foto">
+      <label class="confirm-label" for="confirm-name">Kartenname</label>
+      <input type="text" id="confirm-name" class="confirm-input" placeholder="z.B. Glurak" autocomplete="off">
+      <div class="modal-actions">
+        <button id="confirm-ok" class="btn-primary">Suchen ✓</button>
+        <button id="confirm-cancel" class="btn-ghost">Zurück</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== TOAST ====== -->
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

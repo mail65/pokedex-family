@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Light background so the red dome contrasts -->
+  <rect width="512" height="512" fill="#FFF8F0"/>
+  <!-- White border ring of the ball -->
+  <circle cx="256" cy="256" r="204" fill="#FFFFFF" stroke="#222222" stroke-width="8"/>
+  <!-- Ball body -->
+  <circle cx="256" cy="256" r="196" fill="#FFFFFF"/>
+  <!-- Red top half (dome) -->
+  <path d="M64 256 A192 192 0 0 1 448 256 Z" fill="#EE1515"/>
+  <!-- Middle band -->
+  <rect x="60" y="246" width="392" height="20" fill="#222222"/>
+  <!-- Center button ring (outer black ring) -->
+  <circle cx="256" cy="256" r="56" fill="#FFFFFF" stroke="#222222" stroke-width="12"/>
+  <!-- Center button (inner white) -->
+  <circle cx="256" cy="256" r="26" fill="#FFFFFF" stroke="#222222" stroke-width="6"/>
+</svg>

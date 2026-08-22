@@ -1,0 +1,26 @@
+{
+  "name": "PokéDex Family — Pokémon Karten-Wert-Checker",
+  "short_name": "PokéDex Family",
+  "description": "Pokémon Karten-Wert-Checker für die ganze Familie. Scanne deine Karten und entdecke ihren Wert!",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF8F0",
+  "theme_color": "#EE1515",
+  "lang": "de",
+  "icons": [
+    {
+      "src": "icons/pokeball-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/pokeball-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
