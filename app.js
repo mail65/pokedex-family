@@ -78,6 +78,165 @@ async function deleteCard(profile, cardId) {
   }
 }
 
+// ---- DEUTSCH → ENGLISCH ÜBERSETZUNG ----
+const DE_TO_EN = {
+  // Starter & Klassiker
+  'glumanda': 'charmander', 'glutexo': 'charmeleon', 'glurak': 'charizard',
+  'schiggy': 'squirtle', 'schillok': 'wartortle', 'turtok': 'blastoise',
+  'bisasam': 'bulbasaur', 'bisaknosp': 'ivysaur', 'bisaflor': 'venusaur',
+  'raupy': 'caterpie', 'safcon': 'metapod', 'smettbo': 'butterfree',
+  'hornliu': 'weedle', 'kokuna': 'kakuna', 'bibor': 'beedrill',
+  'taubsi': 'pidgey', 'tauboga': 'pidgeotto', 'tauboss': 'pidgeot',
+  'rattfratz': 'rattata', 'rattikarl': 'raticate',
+  'habitak': 'spearow', 'ibitak': 'fearow',
+  'rettan': 'ekans', 'arbok': 'arbok',
+  'pikachu': 'pikachu', 'raichu': 'raichu',
+  'sandan': 'sandshrew', 'sandamer': 'sandslash',
+  'nidoran': 'nidoran', 'nidorina': 'nidorina', 'nidoqueen': 'nidoqueen',
+  'nidorino': 'nidorino', 'nidoking': 'nidoking',
+  'piepi': 'clefairy', 'pixi': 'clefable',
+  'vulpix': 'vulpix', 'vulnona': 'ninetales',
+  'jiggly': 'jigglypuff', 'wigglytuff': 'wigglytuff',
+  'zubat': 'zubat', 'golbat': 'golbat',
+  'myrapla': 'oddish', 'duflor': 'gloom', 'blubella': 'vileplume',
+  'paras': 'paras', 'parasek': 'parasect',
+  'bluzuk': 'venonat', 'omot': 'venomoth',
+  'digda': 'diglett', 'digdri': 'dugtrio',
+  'mauzi': 'meowth', 'snobilikat': 'persian',
+  'enton': 'psyduck', 'entoron': 'golduck',
+  'menki': 'mankey', 'rasaff': 'primeape',
+  'fukano': 'growlithe', 'arkani': 'arcanine',
+  'quapsel': 'poliwag', 'quaputzi': 'poliwhirl', 'quappo': 'poliwrath',
+  'kadabra': 'kadabra', 'abra': 'abra', 'simsala': 'alakazam',
+  'machollo': 'machop', 'maschock': 'machoke', 'machomei': 'machamp',
+  'knofensa': 'bellsprout', 'ultrigaria': 'weepinbell', 'sarzenia': 'victreebel',
+  'tentacha': 'tentacool', 'tentoxa': 'tentacruel',
+  'geodude': 'geodude', 'georok': 'graveler', 'geowaz': 'golem',
+  'ponita': 'ponyta', 'gallopa': 'rapidash',
+  'flegmon': 'slowpoke', 'gelatroppo': 'slowbro',
+  'magnetilo': 'magnemite', 'magneton': 'magneton',
+  'porenta': 'farfetchd',
+  'dodu': 'doduo', 'dodri': 'dodrio',
+  'jurob': 'seel', 'jugong': 'dewgong',
+  'sleima': 'grimer', 'sleimok': 'muk',
+  'muschas': 'shellder', 'austos': 'cloyster',
+  'gastly': 'gastly', 'haunter': 'haunter', 'gengar': 'gengar',
+  'onix': 'onix',
+  'traumato': 'drowzee', 'hypno': 'hypno',
+  'krabby': 'krabby', 'kingler': 'kingler',
+  'voltobal': 'voltorb', 'lektrobal': 'electrode',
+  'owei': 'exeggcute', 'kokowei': 'exeggutor',
+  'knogga': 'cubone', 'tragosso': 'marowak',
+  'kicklee': 'hitmonlee', 'nockchan': 'hitmonchan',
+  'lugia': 'lugia', 'ho-oh': 'ho-oh',
+  'lippus': 'lickitung',
+  'smogon': 'koffing', 'smogmog': 'weezing',
+  'rihorn': 'rhyhorn', 'rizeros': 'rhydon',
+  'chaneira': 'chansey',
+  'tangela': 'tangela',
+  'kangama': 'kangaskhan',
+  'seeper': 'horsea', 'seemon': 'seadra',
+  'goldini': 'goldeen', 'golking': 'seaking',
+  'sterndu': 'staryu', 'starmie': 'starmie',
+  'pantimos': 'mr. mime',
+  'sichlor': 'scyther',
+  'electabuzz': 'electabuzz',
+  'magmar': 'magmar',
+  'pinsir': 'pinsir',
+  'tauros': 'tauros',
+  'karpador': 'magikarp', 'garados': 'gyarados',
+  'lapras': 'lapras',
+  'ditto': 'ditto',
+  'evoli': 'eevee', 'aquali': 'vaporeon', 'blitza': 'jolteon', 'flamara': 'flareon',
+  'porygon': 'porygon',
+  'amonitas': 'omanyte', 'amoroso': 'omastar',
+  'kabuto': 'kabuto', 'kabutops': 'kabutops',
+  'aerodactyl': 'aerodactyl',
+  'relaxo': 'snorlax',
+  'arktos': 'articuno', 'zapdos': 'zapdos', 'lavados': 'moltres',
+  'dratini': 'dratini', 'dragonir': 'dragonair', 'dragoran': 'dragonite',
+  'mewtu': 'mewtwo', 'mew': 'mew',
+  // Gen 2
+  'endivie': 'chikorita', 'lorblatt': 'bayleef', 'meganie': 'meganium',
+  'feurigel': 'cyndaquil', 'igelavar': 'quilava', 'tornupto': 'typhlosion',
+  'karnimani': 'totodile', 'tyracroc': 'croconaw', 'impergator': 'feraligatr',
+  'hoothoot': 'hoothoot', 'noctuh': 'noctowl',
+  'ledyba': 'ledyba', 'ledian': 'ledian',
+  'webarak': 'spinarak', 'ariados': 'ariados',
+  'crobat': 'crobat',
+  'marill': 'marill', 'azumarill': 'azumarill',
+  'mogelbaum': 'sudowoodo',
+  'politoed': 'politoed',
+  'hopspross': 'hoppip', 'hubelupf': 'skiploom', 'papungha': 'jumpluff',
+  'aipom': 'aipom',
+  'sonnkern': 'sunkern', 'sonnflora': 'sunflora',
+  'yanma': 'yanma',
+  'felino': 'wooper', 'quagsire': 'quagsire',
+  'psiana': 'espeon', 'nachtara': 'umbreon',
+  'kramurx': 'murkrow',
+  'laschoking': 'slowking',
+  'traunfugil': 'misdreavus',
+  'unown': 'unown',
+  'woingenau': 'wobbuffet',
+  'kikugi': 'girafarig',
+  'forstellka': 'pineco', 'forretress': 'forretress',
+  'dummisel': 'dunsparce',
+  'skorgla': 'gligar',
+  'stahlos': 'steelix',
+  'snubbull': 'snubbull', 'granbull': 'granbull',
+  'skaraborn': 'scizor',
+  'shuckle': 'shuckle',
+  'skaralos': 'heracross',
+  'sneasel': 'sneasel',
+  'teddiursa': 'teddiursa', 'ursaring': 'ursaring',
+  'magcargo': 'magcargo',
+  'quiekel': 'swinub', 'piloswine': 'piloswine',
+  'corasonn': 'corsola',
+  'remoraid': 'remoraid', 'octillery': 'octillery',
+  'dewgong': 'dewgong',
+  'panzaeron': 'delibird',
+  'mantax': 'mantine',
+  'magbrant': 'magby',
+  'larvitar': 'larvitar', 'pupitar': 'pupitar', 'despotar': 'tyranitar',
+  'suicune': 'suicune', 'raikou': 'raikou', 'entei': 'entei',
+  'celebi': 'celebi',
+  // Gen 3+
+  'geckarbor': 'treecko', 'reptain': 'grovyle', 'gewaldro': 'sceptile',
+  'flemmli': 'torchic', 'jungglut': 'combusken', 'lohgock': 'blaziken',
+  'hydropi': 'mudkip', 'moorabbel': 'marshtomp', 'sumpex': 'swampert',
+  'kirlia': 'kirlia', 'guardevoir': 'gardevoir', 'ralts': 'ralts',
+  'milotic': 'milotic', 'feebas': 'feebas',
+  'salakling': 'bagon', 'draschel': 'shelgon', 'brutalanda': 'salamence',
+  'latias': 'latias', 'latios': 'latios',
+  'groudon': 'groudon', 'kyogre': 'kyogre', 'rayquaza': 'rayquaza',
+  'jirachi': 'jirachi', 'deoxys': 'deoxys',
+  // Gen 4+
+  'plinfa': 'piplup', 'goldini': 'prinplup', 'impoleon': 'empoleon',
+  'infernape': 'infernape', 'torterra': 'torterra',
+  'lucario': 'lucario', 'riolu': 'riolu',
+  'roserade': 'roserade',
+  'staralili': 'starly', 'staravia': 'staravia', 'staraptor': 'staraptor',
+  'dialga': 'dialga', 'palkia': 'palkia', 'giratina': 'giratina',
+  'arktos': 'articuno',
+  // Gen 5+
+  'serpifeu': 'snivy', 'ibisor': 'servine', 'serpiroyal': 'serperior',
+  'floink': 'tepig', 'ferkelator': 'pignite', 'flambirex': 'emboar',
+  'ottaro': 'oshawott', 'zwottronk': 'dewott', 'admurai': 'samurott',
+  'galar': 'galarian',
+  // Gen 6+
+  'igamaro': 'chespin', 'igastarnish': 'quilladin', 'brigaron': 'chesnaught',
+  'fynx': 'fennekin', 'futifeu': 'braixen', 'fukano': 'delphox',
+  'froxy': 'froakie', 'charoder': 'frogadier', 'quajutsu': 'greninja',
+  'zygarde': 'zygarde', 'xerneas': 'xerneas', 'yveltal': 'yveltal',
+  // Sonstige häufige
+  'glumanda': 'charmander',
+};
+
+function translateName(query) {
+  const lower = query.toLowerCase().trim();
+  return DE_TO_EN[lower] || query;
+}
+
 // ---- API SUCHE ----
 function fetchWithTimeout(url, ms = 10000) {
   return Promise.race([
@@ -87,7 +246,9 @@ function fetchWithTimeout(url, ms = 10000) {
 }
 
 async function searchCards(query) {
-  const clean = query.trim().replace(/[^a-zA-ZäöüÄÖÜß0-9\s\-]/g, '').trim();
+  // Deutschen Namen übersetzen falls vorhanden
+  const translated = translateName(query);
+  const clean = translated.trim().replace(/[^a-zA-ZäöüÄÖÜß0-9\s\-]/g, '').trim();
   if (!clean) throw new Error('Leere Suche');
 
   const words = clean.split(/\s+/);
@@ -309,12 +470,28 @@ async function addCard() {
 }
 
 async function removeCard(id, name) {
-  // Bestätigung bevor löschen
   if (!confirm(`"${name}" wirklich aus der Sammlung entfernen?`)) return;
   await deleteCard(currentProfile, id);
   toast('🗑️ ' + name + ' entfernt');
   await updateCounts();
   renderCollection();
+}
+
+async function openDetailFromCollection(cardId) {
+  // Karte aus Firebase laden und Detail-Screen öffnen
+  setLoader(true, 'Lade Karte…');
+  try {
+    const res = await fetchWithTimeout(`https://api.pokemontcg.io/v2/cards/${cardId}`);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    // Simuliere Suchergebnis damit openDetail() funktioniert
+    window._searchResults = [data.data];
+    await openDetail(0);
+  } catch {
+    toast('⚠️ Karte konnte nicht geladen werden');
+  } finally {
+    setLoader(false);
+  }
 }
 
 let colSortMode = 'price'; // 'price' | 'name' | 'type'
@@ -369,10 +546,32 @@ async function renderCollection() {
       <div class="col-item-set">${esc(c.set)} ${typeTag}</div>
       <div class="col-item-price">${esc(c.sym)}${(c.price||0).toFixed(2)}</div>`;
 
+    // Typ-Badge
+    const typeColors = {
+      'Fire':'#FF9A3C','Water':'#4FC3F7','Grass':'#66BB6A','Electric':'#FFD54F',
+      'Psychic':'#F48FB1','Fighting':'#EF9A9A','Darkness':'#7E57C2','Metal':'#90A4AE',
+      'Dragon':'#5C6BC0','Colorless':'#BDBDBD','Fairy':'#F8BBD9','Normal':'#BDBDBD'
+    };
+    const typeColor = typeColors[c.type] || '#ddd';
+    const typeBadge = c.type
+      ? `<span class="col-type-badge" style="background:${typeColor}">${esc(c.type)}</span>`
+      : '';
+    info.innerHTML = `
+      <div class="col-item-name">${esc(c.name)}</div>
+      <div class="col-item-set">${esc(c.set)} ${typeBadge}</div>
+      <div class="col-item-price">${esc(c.sym)}${(c.price||0).toFixed(2)}</div>`;
+
+    // Anklickbar → Detail
+    item.style.cursor = 'pointer';
+    item.addEventListener('click', e => {
+      if (e.target.closest('.btn-remove')) return;
+      openDetailFromCollection(c.id);
+    });
+
     const btn = document.createElement('button');
     btn.className = 'btn-remove';
     btn.textContent = '🗑️';
-    btn.addEventListener('click', () => removeCard(c.id, c.name));
+    btn.addEventListener('click', e => { e.stopPropagation(); removeCard(c.id, c.name); });
 
     item.appendChild(img);
     item.appendChild(info);
@@ -401,6 +600,7 @@ function closeAutocomplete() {
 
 async function fetchSuggestions(q) {
   if (q.length < 2) { closeAutocomplete(); return; }
+  const translated = translateName(q);
 
   // Debounce: 600ms nach letzter Eingabe
   clearTimeout(acTimer);
@@ -409,7 +609,7 @@ async function fetchSuggestions(q) {
       if (acAbort) acAbort.abort();
       acAbort = new AbortController();
 
-      const firstWord = encodeURIComponent(q.split(' ')[0]);
+      const firstWord = encodeURIComponent(translated.split(' ')[0]);
       const res = await fetch(
         `https://api.pokemontcg.io/v2/cards?q=name:${firstWord}*&pageSize=8`,
         { signal: acAbort.signal }
