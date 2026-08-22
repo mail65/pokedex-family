@@ -402,7 +402,7 @@ function closeAutocomplete() {
 async function fetchSuggestions(q) {
   if (q.length < 2) { closeAutocomplete(); return; }
 
-  // Debounce: 350ms nach letzter Eingabe
+  // Debounce: 600ms nach letzter Eingabe
   clearTimeout(acTimer);
   acTimer = setTimeout(async () => {
     try {
@@ -411,7 +411,7 @@ async function fetchSuggestions(q) {
 
       const firstWord = encodeURIComponent(q.split(' ')[0]);
       const res = await fetch(
-        `https://api.pokemontcg.io/v2/cards?q=name:${firstWord}*&pageSize=8&select=id,name,set,images`,
+        `https://api.pokemontcg.io/v2/cards?q=name:${firstWord}*&pageSize=8`,
         { signal: acAbort.signal }
       );
       if (!res.ok) return;
