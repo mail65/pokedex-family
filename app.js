@@ -238,11 +238,39 @@ function translateName(query) {
 }
 
 // ---- API SUCHE ----
-function fetchWithTimeout(url, ms = 10000) {
+async function fetchWithTimeout(url, ms = 10000) {
   return Promise.race([
     fetch(url),
     new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), ms))
   ]);
+}
+
+// Automatisches Retry: 3 Versuche mit wachsender Pause
+async function fetchWithRetry(url, retries = 3, ms = 10000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetchWithTimeout(url, ms);
+      if (res.ok) return res;
+      // Bei Rate-Limit (429) oder Server-Fehler (5xx): warten und nochmal
+      if (res.status === 429 || res.status >= 500) {
+        if (i < retries - 1) {
+          const wait = (i + 1) * 1500;
+          setLoader(true, `Verbindung... Versuch ${i + 2} von ${retries}`);
+          await new Promise(r => setTimeout(r, wait));
+          continue;
+        }
+      }
+      return res;
+    } catch(e) {
+      if (i < retries - 1) {
+        const wait = (i + 1) * 1500;
+        setLoader(true, `Nochmal versuchen... (${i + 2}/${retries})`);
+        await new Promise(r => setTimeout(r, wait));
+      } else {
+        throw e;
+      }
+    }
+  }
 }
 
 async function searchCards(query) {
@@ -257,7 +285,7 @@ async function searchCards(query) {
   // Strategie: immer erstes Wort + Wildcard — funktioniert für alle Namen
   // ("Slither Wing" → name:Slither* → findet Slither Wing ✅)
   let url = `https://api.pokemontcg.io/v2/cards?q=name:${firstWord}*&pageSize=30`;
-  let res = await fetchWithTimeout(url);
+  let res = await fetchWithRetry(url);
   if (!res.ok) throw new Error('API ' + res.status);
   const data = await res.json();
   let cards = data.data || [];
@@ -484,10 +512,9 @@ async function removeCard(id, name) {
 }
 
 async function openDetailFromCollection(cardId) {
-  // Karte aus Firebase laden und Detail-Screen öffnen
   setLoader(true, 'Lade Karte…');
   try {
-    const res = await fetchWithTimeout(`https://api.pokemontcg.io/v2/cards/${cardId}`);
+    const res = await fetchWithRetry(`https://api.pokemontcg.io/v2/cards/${cardId}`);
     if (!res.ok) throw new Error();
     const data = await res.json();
     // Simuliere Suchergebnis damit openDetail() funktioniert
