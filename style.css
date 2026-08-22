@@ -4,6 +4,7 @@
   --red: #EE1515;
   --yellow: #FFCB05;
   --dark: #1a1a2e;
+  --safe-top: env(safe-area-inset-top, 0px);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -24,7 +25,8 @@ body {
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  padding-top: max(40px, env(safe-area-inset-top) + 40px);
+  padding-top: 80px;
+  padding-top: calc(env(safe-area-inset-top, 44px) + 40px);
 }
 
 .pokeball-icon {
@@ -82,8 +84,9 @@ body {
   align-items: center;
   gap: 10px;
   padding: 14px 16px;
-  /* iOS Safe Area — schiebt Header unter die Statusbar */
-  padding-top: max(14px, env(safe-area-inset-top) + 8px);
+  /* iOS Safe Area: 54px deckt Notch + Dynamic Island ab */
+  padding-top: 54px;
+  padding-top: calc(env(safe-area-inset-top, 44px) + 14px);
   box-shadow: 0 2px 10px rgba(0,0,0,0.2);
   position: sticky; top: 0; z-index: 100;
 }
