@@ -397,9 +397,15 @@ async function openDetail(idx) {
   document.getElementById('price-date').textContent  =
     card.cardmarket?.updatedAt ? 'Stand: ' + card.cardmarket.updatedAt : '';
 
+  const TYPE_DE = {
+    'Fire':'🔥 Feuer', 'Water':'💧 Wasser', 'Grass':'🌿 Pflanze',
+    'Electric':'⚡ Elektro', 'Lightning':'⚡ Elektro', 'Psychic':'🔮 Psycho',
+    'Fighting':'🥊 Kampf', 'Darkness':'🌑 Unlicht', 'Metal':'⚙️ Stahl',
+    'Dragon':'🐉 Drache', 'Colorless':'⭐ Normal', 'Fairy':'🧚 Fee'
+  };
   let badges = '';
   if (card.rarity)     badges += `<span class="badge b-rarity">⭐ ${esc(card.rarity)}</span>`;
-  if (card.types?.[0]) badges += `<span class="badge b-type">${esc(card.types[0])}</span>`;
+  if (card.types?.[0]) badges += `<span class="badge b-type">${esc(TYPE_DE[card.types[0]] || card.types[0])}</span>`;
   if (card.hp)         badges += `<span class="badge b-hp">❤️ ${esc(card.hp)} HP</span>`;
   document.getElementById('detail-badges').innerHTML = badges;
 
@@ -547,14 +553,23 @@ async function renderCollection() {
       <div class="col-item-price">${esc(c.sym)}${(c.price||0).toFixed(2)}</div>`;
 
     // Typ-Badge
-    const typeColors = {
-      'Fire':'#FF9A3C','Water':'#4FC3F7','Grass':'#66BB6A','Electric':'#FFD54F',
-      'Psychic':'#F48FB1','Fighting':'#EF9A9A','Darkness':'#7E57C2','Metal':'#90A4AE',
-      'Dragon':'#5C6BC0','Colorless':'#BDBDBD','Fairy':'#F8BBD9','Normal':'#BDBDBD'
+    const typeMap = {
+      'Fire':      { de: '🔥 Feuer',    color: '#FF9A3C' },
+      'Water':     { de: '💧 Wasser',   color: '#4FC3F7' },
+      'Grass':     { de: '🌿 Pflanze',  color: '#66BB6A' },
+      'Electric':  { de: '⚡ Elektro',  color: '#FFD54F' },
+      'Psychic':   { de: '🔮 Psycho',   color: '#F48FB1' },
+      'Fighting':  { de: '🥊 Kampf',    color: '#EF9A9A' },
+      'Darkness':  { de: '🌑 Unlicht',  color: '#7E57C2' },
+      'Metal':     { de: '⚙️ Stahl',    color: '#90A4AE' },
+      'Dragon':    { de: '🐉 Drache',   color: '#5C6BC0' },
+      'Colorless': { de: '⭐ Normal',   color: '#BDBDBD' },
+      'Fairy':     { de: '🧚 Fee',      color: '#F8BBD9' },
+      'Lightning': { de: '⚡ Elektro',  color: '#FFD54F' },
     };
-    const typeColor = typeColors[c.type] || '#ddd';
-    const typeBadge = c.type
-      ? `<span class="col-type-badge" style="background:${typeColor}">${esc(c.type)}</span>`
+    const typeInfo = typeMap[c.type];
+    const typeBadge = typeInfo
+      ? `<span class="col-type-badge" style="background:${typeInfo.color}">${typeInfo.de}</span>`
       : '';
     info.innerHTML = `
       <div class="col-item-name">${esc(c.name)}</div>
