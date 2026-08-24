@@ -461,6 +461,8 @@ async function searchCards(query) {
       let cards = top20.map(c => normalizeTcgdexCard(c, setMap));
       // Fehlende Bilder via pokemontcg.io nachladen (EIN Batch-Request)
       cards = await fillMissingImages(cards);
+      // Karten ohne Bild rausfiltern — Kinder erkennen Karten nur am Bild
+      cards = cards.filter(c => c.images?.small);
       if (cards.length > 0) return cards;
     }
   } catch(e) {
