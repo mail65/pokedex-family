@@ -131,6 +131,8 @@ body {
 .profile-card:active { transform: scale(0.95); }
 .profile-card.franz  { border-color: #3B4CCA; }
 .profile-card.kate   { border-color: #e91e8c; }
+.profile-card.nil    { border-color: #16a34a; }
+.profile-card.jelle  { border-color: #f59e0b; }
 .profile-card .emoji  { font-size: 48px; margin-bottom: 10px; }
 .profile-card .pname  { font-family: 'Press Start 2P', cursive; font-size: 11px; color: var(--dark); }
 .profile-card .pcount { font-size: 11px; color: #999; margin-top: 6px; font-weight: 700; }

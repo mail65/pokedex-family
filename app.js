@@ -653,7 +653,9 @@ async function selectProfile(profile) {
   currentProfile = profile;
   const info = {
     franz: { name: "Franz's PokéDex", avatar: '🦊' },
-    kate:  { name: "Kate's PokéDex",  avatar: '🌸' }
+    kate:  { name: "Kate's PokéDex",  avatar: '🌸' },
+    nil:   { name: "Nil's PokéDex",   avatar: '🐉' },
+    jelle: { name: "Jelle's PokéDex", avatar: '⚡' }
   };
   document.getElementById('header-name').textContent   = info[profile].name;
   document.getElementById('header-avatar').textContent = info[profile].avatar;
@@ -664,7 +666,7 @@ async function selectProfile(profile) {
 }
 
 async function updateCounts() {
-  for (const p of ['franz', 'kate']) {
+  for (const p of ['franz', 'kate', 'nil', 'jelle']) {
     const el = document.getElementById('count-' + p);
     if (el) {
       const col = await loadCollection(p);
@@ -1128,6 +1130,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('btn-franz').addEventListener('click',       () => selectProfile('franz'));
   document.getElementById('btn-kate').addEventListener('click',        () => selectProfile('kate'));
+  document.getElementById('btn-nil').addEventListener('click',         () => selectProfile('nil'));
+  document.getElementById('btn-jelle').addEventListener('click',       () => selectProfile('jelle'));
   document.getElementById('btn-back').addEventListener('click',        async () => { await updateCounts(); showScreen('screen-profile'); });
   document.getElementById('btn-back-detail').addEventListener('click', () => showScreen('screen-main'));
   document.getElementById('tab-search').addEventListener('click',      () => showTab('search'));
