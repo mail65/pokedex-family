@@ -114,17 +114,22 @@ body {
   font-weight: 700;
 }
 
-.profile-cards { display: flex; gap: 20px; }
+.profile-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  width: 100%;
+  max-width: 340px;
+}
 
 .profile-card {
   background: white;
   border-radius: 20px;
-  padding: 28px 22px;
+  padding: 24px 16px;
   text-align: center;
   cursor: pointer;
   box-shadow: 0 8px 30px rgba(0,0,0,0.2);
   transition: transform 0.15s;
-  min-width: 130px;
   border: 3px solid transparent;
   -webkit-tap-highlight-color: transparent;
 }
