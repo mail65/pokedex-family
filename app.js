@@ -110,11 +110,35 @@ function cardImageUrl(cardId, setMap, size = 'low') {
 
 // TCGdex Karten-Liste suchen
 async function tcgdexSearch(query) {
-  const encoded = encodeURIComponent(query.trim());
+  const q = query.trim();
+  const encoded = encodeURIComponent(q);
   const res = await fetchWithTimeout(TCGDEX_BASE + '/cards?name=' + encoded, 10000);
   if (!res.ok) return [];
   const data = await res.json();
-  return Array.isArray(data) ? data : [];
+  let results = Array.isArray(data) ? data : [];
+
+  // Wenn Query einen Bindestrich hat (z.B. "Pikachu-ex"), auch den Basis-Namen suchen
+  // und alle Varianten (Pikachu V, Pikachu VMAX, Pikachu GX etc.) hinzufügen
+  if (q.includes('-') || q.toLowerCase().includes(' ex') || q.toLowerCase().includes(' gx') ||
+      q.toLowerCase().includes(' vmax') || q.toLowerCase().includes(' v ')) {
+    const baseName = q.split(/[-\s]/)[0];
+    if (baseName.length >= 3) {
+      try {
+        const baseEncoded = encodeURIComponent(baseName);
+        const res2 = await fetchWithTimeout(TCGDEX_BASE + '/cards?name=' + baseEncoded, 8000);
+        if (res2.ok) {
+          const data2 = await res2.json();
+          if (Array.isArray(data2)) {
+            // Merge: exakte Treffer zuerst, dann Varianten (Duplikate vermeiden)
+            const existingIds = new Set(results.map(c => c.id));
+            const extras = data2.filter(c => !existingIds.has(c.id));
+            results = [...results, ...extras];
+          }
+        }
+      } catch(e) {}
+    }
+  }
+  return results;
 }
 
 // TCGdex Detail — NUR für angeklickte Karte (HP, Typ, Preis)
@@ -505,79 +529,72 @@ async function fetchCardPrice(cardId) {
     }
   } catch(e) {}
 
-  // Versuch 2: pokemontcg.io (Punkte aus ID entfernen: sm7.5 → sm75)
-  try {
-    const tcgId = cardId.replace(/\.(?=\d)/g, '');
-    const res = await fetchWithTimeout(
-      'https://api.pokemontcg.io/v2/cards/' + tcgId + '?select=id,cardmarket,tcgplayer',
-      6000
-    );
-    if (res.ok) {
-      const d = await res.json();
-      if (d.data?.cardmarket || d.data?.tcgplayer) {
-        return {
-          cardmarket: d.data.cardmarket,
-          tcgplayer:  d.data.tcgplayer,
-          _priceSource: 'pokemontcg'
-        };
+  // Versuch 2: pokemontcg.io — nur für IDs die kompatibel sind (base1, sv, swsh etc.)
+  // TCGdex-spezifische IDs (mep-, me01-, me02- etc.) sind inkompatibel → überspringen
+  const pokemontcgCompatible = /^(base|jungle|fossil|team|gym|neo|ex|dp|hgss|bw|xy|sm|swsh|sv|cel|pl|pop|tk|mcd)/i.test(cardId);
+  if (pokemontcgCompatible) {
+    try {
+      const tcgId = cardId.replace(/\.(?=\d)/g, '');
+      const res = await fetchWithTimeout(
+        'https://api.pokemontcg.io/v2/cards/' + tcgId + '?select=id,cardmarket,tcgplayer',
+        6000
+      );
+      if (res.ok) {
+        const d = await res.json();
+        if (d.data?.cardmarket || d.data?.tcgplayer) {
+          return {
+            cardmarket: d.data.cardmarket,
+            tcgplayer:  d.data.tcgplayer,
+            _priceSource: 'pokemontcg'
+          };
+        }
       }
-    }
-  } catch(e) {}
+    } catch(e) {}
+  }
 
   return null;
 }
 
-// Für alle Sammlungskarten ohne Preis: Preise nachladen und Firebase updaten
+// Für alle Sammlungskarten ohne Preis: Preise via TCGdex Detail nachladen
 async function enrichCollectionPrices(profile) {
   const col = await loadCollection(profile);
-  const unpricedIds = col.filter(c => !c.price || c.price === 0).map(c => c.id);
-  if (!unpricedIds.length) return;
+  const unpriced = col.filter(c => !c.price || c.price === 0);
+  if (!unpriced.length) return;
 
-  // Batch: pokemontcg.io für alle auf einmal (schneller)
-  try {
-    const tcgIds = unpricedIds.map(id => id.replace(/\.(?=\d)/g, ''));
-    const q = tcgIds.map(id => 'id:' + id).join(' OR ');
-    const res = await fetchWithTimeout(
-      'https://api.pokemontcg.io/v2/cards?q=' + encodeURIComponent(q) +
-      '&pageSize=50&select=id,cardmarket,tcgplayer',
-      10000
-    );
-    if (!res.ok) return;
-    const data = await res.json();
-    const priceMap = {};
-    (data.data || []).forEach(c => {
-      const cm = c.cardmarket?.prices;
-      const tcp = c.tcgplayer?.prices;
-      let v = cm?.averageSellPrice || cm?.trendPrice;
-      let sym = '€';
-      if (!v) {
-        const tv = tcp?.holofoil || tcp?.normal || Object.values(tcp||{})[0];
-        v = tv?.market || tv?.mid;
-        sym = '$';
-      }
-      if (v) priceMap[c.id] = { price: v, sym };
-    });
+  let updated = 0;
+  for (const card of unpriced) {
+    try {
+      // TCGdex Detail hat Cardmarket-Preise direkt
+      const res = await fetchWithTimeout(TCGDEX_BASE + '/cards/' + card.id, 6000);
+      if (!res.ok) continue;
+      const d = await res.json();
+      const vd = d.variants_detailed;
+      if (!vd || !vd.length) continue;
 
-    // Firebase-Updates für alle die einen Preis bekommen haben
-    const updates = [];
-    for (const card of col) {
-      if (!card.price || card.price === 0) {
-        const tcgId = card.id.replace(/\.(?=\d)/g, '');
-        const found = priceMap[tcgId];
-        if (found) {
-          card.price = found.price;
-          card.sym   = found.sym;
-          updates.push(saveCard(profile, card));
+      // Besten verfügbaren Preis nehmen
+      let price = null, sym = '€';
+      for (const variant of vd) {
+        const cm = variant.pricing?.cardmarket;
+        const tcp = variant.pricing?.tcgplayer;
+        if (cm?.avg && cm.avg > 0)   { price = cm.avg;  sym = '€'; break; }
+        if (cm?.trend && cm.trend > 0) { price = cm.trend; sym = '€'; break; }
+        if (tcp) {
+          const tv = tcp.holofoil || tcp.normal || Object.values(tcp).find(v => v?.marketPrice);
+          if (tv?.marketPrice > 0) { price = tv.marketPrice; sym = '$'; break; }
         }
       }
-    }
-    if (updates.length) {
-      await Promise.all(updates);
-      console.log('Preise aktualisiert für', updates.length, 'Karten');
-    }
-  } catch(e) {
-    console.warn('enrichCollectionPrices fehlgeschlagen:', e);
+
+      if (price) {
+        card.price = price;
+        card.sym   = sym;
+        await saveCard(profile, card);
+        updated++;
+      }
+      // Kurze Pause zwischen Requests (Rate-Limit)
+      await new Promise(r => setTimeout(r, 80));
+    } catch(e) {}
   }
+  if (updated) console.log('Preise aktualisiert für', updated, 'Karten');
 }
 
 // ---- SCREEN ----
@@ -843,8 +860,8 @@ async function renderCollection() {
   document.getElementById('col-header').style.display = 'none';
   document.getElementById('col-list').innerHTML = '<div style="text-align:center;padding:20px;color:#999">Lade…</div>';
 
-  // Fehlende Preise im Hintergrund nachladen, dann neu rendern
-  enrichCollectionPrices(currentProfile).then(() => renderCollectionInner(currentProfile));
+  // Erst Preise nachladen (updated Firebase), dann frisch aus Firebase laden und rendern
+  await enrichCollectionPrices(currentProfile);
 
   const col = await loadCollection(currentProfile);
   const list = document.getElementById('col-list');
