@@ -414,11 +414,16 @@ body {
   color: #333; margin-left: 4px;
   vertical-align: middle;
 }
-.btn-remove {
-  background: #f8d7da; border: none; border-radius: 8px;
-  width: 34px; height: 34px; font-size: 15px; cursor: pointer; flex-shrink: 0;
+.col-item-actions {
+  display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;
+}
+.btn-remove, .btn-edit {
+  border: none; border-radius: 8px;
+  width: 34px; height: 34px; font-size: 15px; cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+.btn-remove { background: #f8d7da; }
+.btn-edit   { background: #e0f0ff; }
 
 /* TOAST */
 #toast {

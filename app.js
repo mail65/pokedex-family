@@ -1004,20 +1004,51 @@ async function renderCollection() {
     // Anklickbar → Detail
     item.style.cursor = 'pointer';
     item.addEventListener('click', e => {
-      if (e.target.closest('.btn-remove')) return;
+      if (e.target.closest('.btn-remove') || e.target.closest('.btn-edit')) return;
       openDetailFromCollection(c.id, c);
     });
+
+    const btnActions = document.createElement('div');
+    btnActions.className = 'col-item-actions';
+
+    const btnEdit = document.createElement('button');
+    btnEdit.className = 'btn-edit';
+    btnEdit.textContent = '✏️';
+    btnEdit.title = 'Zustand ändern';
+    btnEdit.addEventListener('click', e => { e.stopPropagation(); changeCondition(c); });
 
     const btn = document.createElement('button');
     btn.className = 'btn-remove';
     btn.textContent = '🗑️';
     btn.addEventListener('click', e => { e.stopPropagation(); removeCard(c.id, c.name); });
 
+    btnActions.appendChild(btnEdit);
+    btnActions.appendChild(btn);
+
     item.appendChild(img);
     item.appendChild(info);
-    item.appendChild(btn);
+    item.appendChild(btnActions);
     list.appendChild(item);
   });
+}
+
+
+// Zustand einer Sammlungskarte nachträglich ändern
+async function changeCondition(card) {
+  const condition = await askCondition();
+  if (!condition) return;
+
+  const cInfo = CONDITIONS[condition];
+  const basePrice = card.basePrice || card.price || 0;
+  const adjPrice  = adjustedPrice(basePrice, condition);
+
+  card.condition = condition;
+  card.basePrice = basePrice;
+  card.price     = adjPrice;
+
+  await saveCard(currentProfile, card);
+  toast('✅ Zustand geändert: ' + cInfo.label);
+  renderCollection();
 }
 
 // ---- CARDMARKET ----
