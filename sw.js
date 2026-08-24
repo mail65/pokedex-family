@@ -1,7 +1,8 @@
-/* PokéDex Family — Service Worker v4
+/* PokéDex Family — Service Worker v5
    Network-First für HTML, Cache-Busting bei jedem Deploy
+   v5: TCGdex als primäre API
 */
-const CACHE_VERSION = 'pokefam-v4';
+const CACHE_VERSION = 'pokefam-v5';
 
 self.addEventListener('install', e => {
   // Sofort aktivieren, alle alten Caches löschen
@@ -20,8 +21,10 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // API: immer live, nie cachen
+  // APIs: immer live, nie cachen
   if (url.hostname.includes('api.pokemontcg.io')) return;
+  if (url.hostname.includes('api.tcgdex.net')) return;
+  if (url.hostname.includes('assets.tcgdex.net')) return;
 
   e.respondWith(
     fetch(e.request)

@@ -1,89 +1,110 @@
-# 🎮 PokéDex Family — Projektdoku
-
-> Erstellt: 22.08.2026 | Entwickler: Felix (AI) | Auftraggeber: Tobias
-
----
-
-## 📱 Was ist das?
-
-Eine PWA (Progressive Web App) für Franz 🦊 und Kate 🌸 — Pokémon-Karten scannen, Marktwert checken, Sammlung aufbauen.
-
-**Live-URL:** https://mail65.github.io/pokedex-family/
-**GitHub Repo:** https://github.com/mail65/pokedex-family (Account: mail65)
-**Lokal:** http://localhost:8765 (python3 -m http.server 8765 im pokemon-app Ordner)
+# PokéDex Family — Projektdokumentation
+> Stand: 22.08.2026 | Entwickelt in einer Session mit Felix (OpenClaw)
 
 ---
 
-## ✅ Was ist fertig (Stand 22.08.2026)
-
-- Profil-Auswahl: Franz 🦊 und Kate 🌸 — je eigene Sammlung (localStorage)
-- Karten-Suche via Pokémon TCG API (kostenlos, kein API-Key nötig)
-- Kamerascan mit 📷-Button (getUserMedia + manueller Namenseingabe)
-- Detailansicht: Kartenbild, Rarity, HP, Cardmarket-Preis, TCGPlayer-Preis
-- Grading-Hinweise (Mint / Near Mint / Excellent / Good)
-- Cardmarket-Link 🛒 direkt zur Karte
-- Sammlung speichern + Gesamtwert der Sammlung
-- Pokémon-Design: Rot/Gelb, Pokéball-Animation, Press Start 2P Font
-- PWA-fähig: auf iPhone als App installierbar (Safari → "Zum Homescreen")
-- Service Worker für Offline-Basis
+## Links
+- **Live-App:** https://mail65.github.io/pokedex-family/
+- **GitHub Repo:** https://github.com/mail65/pokedex-family (Account: mail65)
+- **Lokal:** `/Users/felix/.openclaw/workspace/pokemon-app/`
 
 ---
 
-## 🛠️ Dateistruktur
+## Was ist das?
+Eine PWA (Progressive Web App) für Franz & Kate zum Suchen, Entdecken und Sammeln von Pokémon-Karten. Läuft im Browser, kann wie eine echte App auf dem iPhone-Startbildschirm installiert werden.
 
+---
+
+## Features
+
+### Suche
+- Karten-Suche via pokemontcg.io API (kostenlos, kein Key nötig)
+- **Deutsche Namen** werden automatisch übersetzt (Glurak → Charizard, Evoli → Eevee, Mewtu → Mewtwo, etc.) — 150+ Pokémon
+- **Autosuggest** ab 2 Buchstaben mit Kartenbild und Set-Name
+- Schnellsuche-Buttons: Pikachu, Glurak, Mewtu, Evoli
+- **Automatisches Retry** bei Verbindungsfehler (3× mit Pause)
+- Wildcard-Suche: "Slither Wing" → sucht "Slither*" + clientseitiger Filter
+
+### Sammlung
+- **Firebase Cloud-Sync** — geräteübergreifend, für immer gespeichert
+- Gesamtwert der Sammlung angezeigt
+- Wertvollste Karte hervorgehoben (👑)
+- Karten in Sammlung anklickbar → öffnet Detail-Ansicht
+- Typ-Badges auf Deutsch mit Emoji (🔥 Feuer, 💧 Wasser, ⚡ Elektro etc.)
+- Sortierung nach Preis / Name / Typ
+- Lösch-Bestätigung vor dem Entfernen einer Karte
+
+### Detail-Ansicht
+- Großes Kartenbild
+- Marktwert (Cardmarket Ø in €, TCGPlayer in $)
+- Preisübersicht (CM Niedrig, CM Trend, TCG Markt/Niedrig/Hoch)
+- Rarity / Typ / HP Badges
+- Grading-Erklärung (Mint, Near Mint, Excellent, Good)
+- Link zu Cardmarket für Kauf/Verkauf
+- "Zur Sammlung hinzufügen" Button
+
+### Startbildschirm
+- Fliegende Pokémon-Parade mit echten Sprites (PokeAPI)
+- Glurak, Pikachu, Mewtu, Relaxo, Lugia, Rayquaza, Lucario, Dragoran etc.
+- Bounce-Animation + horizontale Bewegung (2 Wrapper, keine Konflikt)
+- Pokéball-Animation, Profil-Auswahl (🦊 Franz / 🌸 Kate)
+
+### Technisches
+- iOS Safe Area für alle Screens (Header nicht unter Statusleiste)
+- Service Worker v4 (Network-First, Cache-Busting)
+- Kein Framework — reines HTML + CSS + JS
+- PWA-Manifest für Homescreen-Installation
+
+---
+
+## Firebase
+- **URL:** `https://pokemon-efef7-default-rtdb.europe-west1.firebasedatabase.app`
+- **Projekt:** "Pokemon" (ID: pokemon-efef7) — Tobias' bestehender Firebase-Account
+- **Regeln:** `.read: true, .write: true` (öffentlich — für Kinder-App ausreichend)
+- **Struktur:** `/collections/franz/{cardId}` und `/collections/kate/{cardId}`
+
+---
+
+## Was noch kommen soll (später)
+- 📷 **Google Vision OCR** — Foto machen, obere 20% der Karte analysieren, Name automatisch erkennen
+  - Plan: Google Cloud Account + API Key (~$1.50 pro 1.000 Scans)
+  - Tobias erstellt Account wenn gewünscht
+  - Das wird Franz' Geburtstagsüberraschung 🎁
+
+---
+
+## Installationsanleitung (für Weitergabe)
+
+🎮 PokéDex Family — So installierst du die App
+
+Öffne diesen Link auf deinem iPhone im Safari-Browser:
+👉 https://mail65.github.io/pokedex-family/
+
+Schritt 1: Unten in der Mitte auf das Teilen-Symbol tippen
+(das Viereck mit dem Pfeil nach oben ↑)
+
+Schritt 2: Im Menü runterscrollen und „Zum Home-Bildschirm" antippen
+
+Schritt 3: Oben rechts auf „Hinzufügen" tippen
+
+Fertig! 🎉 Die App erscheint jetzt wie eine echte App auf dem Startbildschirm — kein App Store, kein Download nötig.
+
+---
+
+## Bekannte API-Eigenheiten
+- pokemontcg.io rate-limitet ohne API-Key bei vielen Anfragen hintereinander
+- Namen mit Leerzeichen: firstWord+Wildcard-Strategie funktioniert zuverlässig
+- API kennt nur englische Namen → Übersetzung passiert client-seitig
+
+## Git Log (letzte Commits)
 ```
-pokemon-app/
-├── index.html       — Alle 3 Screens (Profil / Suche / Detail)
-├── app.js           — Komplette App-Logik
-├── style.css        — Pokémon-Design, Mobile-First
-├── manifest.json    — PWA-Manifest
-├── sw.js            — Service Worker (Network-First, v3)
-├── icons/
-│   ├── pokeball.svg
-│   ├── pokeball-192.png
-│   └── pokeball-512.png
-└── PROJEKT.md       — Diese Datei
+4a64063 fix: toten Code entfernt, Kamera-CSS weg, Schnellsuche auf Deutsch, Debounce 600ms
+f0121c2 fix: Parade-Animation (Lane+Bounce getrennt), Autosuggest Debounce fix
+73bcd8f feat: Auto-Retry bei Verbindungsfehler — 3× automatisch nochmal versuchen
+07bc94a feat: Echte Pokémon-Sprites auf Startbildschirm
+b3b7c50 feat: Typ-Badges auf Deutsch mit Emoji
+7a90983 fix: iOS Safe Area für ALLE Screens
+a3ef1a7 feat: dt. Namen, Sammlung anklickbar, Typ-Badges
+5126b5f feat: Autosuggest + Firebase Cloud-Sync
+2e83b7f feat: Firebase Cloud-Sync (pokemon-efef7)
 ```
-
----
-
-## 💡 Noch offen / Ideen für später
-
-- [ ] Echte OCR-Kartenerkennung (z.B. via Google Vision API oder Roboflow)
-- [ ] Preisverlauf als Chart (Chart.js)
-- [ ] Karten-Filter nach Set, Typ, Seltenheit
-- [ ] Mehrere Exemplare einer Karte (Anzahl)
-- [ ] Karten-Export als PDF / CSV
-- [ ] Dark Mode
-- [ ] Push-Notifications wenn Kartenwert steigt
-- [ ] iOS-Installation Hinweis beim ersten Start
-
----
-
-## ⚠️ Bekannte Issues
-
-- **Service Worker Cache**: Beim ersten Laden nach Deploy kann der SW alte Version ausliefern.
-  Fix: Safari-Cache leeren (Einstellungen → Safari → Verlauf löschen) oder Hard-Reload.
-- **Kamerascan**: Kein echtes OCR — nur Foto + manuelle Namenseingabe als Prompt.
-  Funktioniert aber gut als UX-Flow.
-
----
-
-## 🔧 Deployment
-
-```bash
-cd /Users/felix/.openclaw/workspace/pokemon-app
-git add -A
-git commit -m "beschreibung"
-git push
-# → GitHub Pages deployed automatisch nach ~1-2 Min
-```
-
----
-
-## 📡 APIs
-
-- **Pokémon TCG API:** https://api.pokemontcg.io/v2/ — kostenlos, kein Key
-  - Suche: `GET /cards?q=name:"Pikachu"&pageSize=20`
-  - Preise in `card.cardmarket.prices` (€) und `card.tcgplayer.prices` ($)
-- **Cardmarket:** https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=NAME

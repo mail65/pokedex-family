@@ -1,8 +1,8 @@
-/* PokéDex Family — App Logic v4
-   - Kamera entfernt (kommt später mit Google Vision)
+/* PokéDex Family — App Logic v5
+   - TCGdex als primäre API (nativ deutsch!)
+   - pokemontcg.io als Fallback (englische Namen, Preise)
    - Firebase Realtime DB für Geräte-übergreifende Sammlung
    - Robuste API-Suche ohne Rate-Limit-Probleme
-   - Schöne Sammlungsansicht mit Gesamtwert
 */
 
 // ---- FIREBASE CONFIG ----
@@ -78,7 +78,67 @@ async function deleteCard(profile, cardId) {
   }
 }
 
-// ---- DEUTSCH → ENGLISCH ÜBERSETZUNG ----
+// ---- TCGDEX API (primär, nativ deutsch) ----
+const TCGDEX_BASE  = 'https://api.tcgdex.net/v2/de';
+const TCGDEX_IMG   = 'https://assets.tcgdex.net';  // + /de/... + /low.webp
+
+// TCGdex Karten-Liste suchen (gibt id + name + evtl. image)
+async function tcgdexSearch(query) {
+  const encoded = encodeURIComponent(query.trim());
+  const res = await fetchWithTimeout(`${TCGDEX_BASE}/cards?name=${encoded}`, 10000);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+// TCGdex Karten-Detail (Bild, HP, Typ, Preis, Set)
+async function tcgdexDetail(id) {
+  const res = await fetchWithTimeout(`${TCGDEX_BASE}/cards/${id}`, 8000);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+// TCGdex-Karte in unser internes Format umwandeln
+function normalizeTcgdexCard(card) {
+  // Bild: entweder direkt dabei oder aus assets bauen
+  let imgSmall = null, imgLarge = null;
+  if (card.image) {
+    imgSmall = card.image + '/low.webp';
+    imgLarge = card.image + '/high.webp';
+  }
+  // Preis aus variants_detailed (erster Eintrag)
+  let cmPrice = null, tcgPrice = null;
+  const vd = card.variants_detailed;
+  if (vd && vd.length) {
+    const p = vd[0].pricing;
+    if (p?.cardmarket) {
+      cmPrice = {
+        averageSellPrice: p.cardmarket.avg   || null,
+        trendPrice:       p.cardmarket.trend || null,
+        lowPrice:         p.cardmarket.low   || null,
+        updatedAt:        p.cardmarket.updated ? p.cardmarket.updated.slice(0,10) : null
+      };
+    }
+    if (p?.tcgplayer) {
+      const v = p.tcgplayer.holofoil || p.tcgplayer.normal || Object.values(p.tcgplayer).find(x => x?.marketPrice);
+      if (v) tcgPrice = { holofoil: { market: v.marketPrice, low: v.lowPrice, mid: v.midPrice, high: v.highPrice } };
+    }
+  }
+  return {
+    id:           card.id,
+    name:         card.name,
+    hp:           card.hp ? String(card.hp) : null,
+    types:        card.types || [],
+    rarity:       card.rarity || null,
+    images:       imgSmall ? { small: imgSmall, large: imgLarge } : {},
+    set:          { name: card.set?.name || '', series: card.set?.id || '' },
+    cardmarket:   cmPrice ? { prices: cmPrice, updatedAt: cmPrice.updatedAt } : undefined,
+    tcgplayer:    tcgPrice ? { prices: tcgPrice } : undefined,
+    _source:      'tcgdex'
+  };
+}
+
+// ---- DEUTSCH → ENGLISCH ÜBERSETZUNG (nur noch für pokemontcg.io Fallback) ----
 const DE_TO_EN = {
   // Starter & Klassiker
   'glumanda': 'charmander', 'glutexo': 'charmeleon', 'glurak': 'charizard',
@@ -237,6 +297,11 @@ function translateName(query) {
   return DE_TO_EN[lower] || query;
 }
 
+// Gibt true zurück wenn query ein bekannter dt. Pokémon-Name ist
+function isGermanName(query) {
+  return query.toLowerCase().trim() in DE_TO_EN;
+}
+
 // ---- API SUCHE ----
 async function fetchWithTimeout(url, ms = 10000) {
   return Promise.race([
@@ -274,30 +339,54 @@ async function fetchWithRetry(url, retries = 3, ms = 10000) {
 }
 
 async function searchCards(query) {
-  // Deutschen Namen übersetzen falls vorhanden
-  const translated = translateName(query);
+  const q = query.trim();
+  if (!q) throw new Error('Leere Suche');
+
+  // ── 1. Versuch: TCGdex (nativ deutsch) ──────────────────────────────────
+  try {
+    let results = await tcgdexSearch(q);
+
+    if (results.length > 0) {
+      // Maximal 20 nehmen (nach Relevanz: exakter Name zuerst)
+      const exact = results.filter(c => c.name.toLowerCase() === q.toLowerCase());
+      const rest  = results.filter(c => c.name.toLowerCase() !== q.toLowerCase());
+      const top20 = [...exact, ...rest].slice(0, 20);
+
+      // Details parallel laden (Bilder, Preise, HP, Typ)
+      setLoader(true, `Lade ${top20.length} Karten…`);
+      const details = await Promise.all(
+        top20.map(c => tcgdexDetail(c.id).catch(() => null))
+      );
+
+      const cards = details
+        .filter(Boolean)
+        .map(normalizeTcgdexCard);
+
+      if (cards.length > 0) return cards;
+    }
+  } catch(e) {
+    console.warn('TCGdex Fehler, versuche Fallback:', e);
+  }
+
+  // ── 2. Fallback: pokemontcg.io (englisch) ────────────────────────────────
+  setLoader(true, 'TCGdex leer — suche englisch…');
+  const translated = translateName(q);
   const clean = translated.trim().replace(/[^a-zA-ZäöüÄÖÜß0-9\s\-]/g, '').trim();
   if (!clean) throw new Error('Leere Suche');
 
   const words = clean.split(/\s+/);
   const firstWord = encodeURIComponent(words[0]);
-
-  // Strategie: immer erstes Wort + Wildcard — funktioniert für alle Namen
-  // ("Slither Wing" → name:Slither* → findet Slither Wing ✅)
-  let url = `https://api.pokemontcg.io/v2/cards?q=name:${firstWord}*&pageSize=30`;
-  let res = await fetchWithRetry(url);
+  const url = `https://api.pokemontcg.io/v2/cards?q=name:${firstWord}*&pageSize=30`;
+  const res = await fetchWithRetry(url);
   if (!res.ok) throw new Error('API ' + res.status);
   const data = await res.json();
   let cards = data.data || [];
 
-  // Wenn mehrteiliger Name: clientseitig filtern
   if (words.length > 1) {
     const lc = clean.toLowerCase();
     const filtered = cards.filter(c => c.name.toLowerCase().includes(lc));
-    // Nur filtern wenn Treffer vorhanden, sonst alle zurückgeben
     if (filtered.length) cards = filtered;
   }
-
   return cards;
 }
 
@@ -636,37 +725,56 @@ function closeAutocomplete() {
 
 async function fetchSuggestions(q) {
   if (q.length < 2) { closeAutocomplete(); return; }
-  const translated = translateName(q);
 
-  // Debounce: 600ms nach letzter Eingabe
   clearTimeout(acTimer);
   acTimer = setTimeout(async () => {
     try {
       if (acAbort) acAbort.abort();
       acAbort = new AbortController();
 
-      const firstWord = encodeURIComponent(translated.split(' ')[0]);
-      const res = await fetch(
-        `https://api.pokemontcg.io/v2/cards?q=name:${firstWord}*&pageSize=8`,
-        { signal: acAbort.signal }
-      );
-      if (!res.ok) return;
-      const data = await res.json();
-      const cards = data.data || [];
+      // ── TCGdex Autosuggest (deutsch) ──
+      let cards = [];
+      try {
+        const encoded = encodeURIComponent(q.trim());
+        const res = await fetch(`${TCGDEX_BASE}/cards?name=${encoded}`, { signal: acAbort.signal });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length) {
+            // Duplikate nach Name entfernen, max 8
+            const seen = new Set();
+            cards = data
+              .filter(c => { if (seen.has(c.name)) return false; seen.add(c.name); return true; })
+              .slice(0, 8)
+              .map(c => ({
+                name: c.name,
+                id:   c.id,
+                images: c.image ? { small: c.image + '/low.webp' } : {},
+                set:    { name: '' }
+              }));
+          }
+        }
+      } catch(e) { if (e.name === 'AbortError') return; }
 
-      // Clientseitig filtern falls mehrere Wörter
-      const lc = q.toLowerCase();
-      const filtered = cards.filter(c => c.name.toLowerCase().startsWith(lc));
-      const show = filtered.length ? filtered : cards;
+      // ── Fallback: pokemontcg.io wenn TCGdex nichts liefert ──
+      if (!cards.length) {
+        const translated = translateName(q);
+        const firstWord = encodeURIComponent(translated.split(' ')[0]);
+        const res2 = await fetch(
+          `https://api.pokemontcg.io/v2/cards?q=name:${firstWord}*&pageSize=8`,
+          { signal: acAbort.signal }
+        );
+        if (res2.ok) {
+          const data2 = await res2.json();
+          const raw = data2.data || [];
+          const lc = q.toLowerCase();
+          const filtered = raw.filter(c => c.name.toLowerCase().startsWith(lc));
+          const seen = new Set();
+          cards = (filtered.length ? filtered : raw)
+            .filter(c => { if (seen.has(c.name)) return false; seen.add(c.name); return true; });
+        }
+      }
 
-      // Duplikate nach Name entfernen
-      const seen = new Set();
-      const unique = show.filter(c => {
-        if (seen.has(c.name)) return false;
-        seen.add(c.name); return true;
-      });
-
-      renderAutocomplete(unique);
+      renderAutocomplete(cards);
     } catch(e) {
       if (e.name !== 'AbortError') closeAutocomplete();
     }
