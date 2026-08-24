@@ -475,6 +475,111 @@ async function searchCards(query) {
   return cards;
 }
 
+
+// ---- PREIS-SCHÄTZUNG ----
+// Holt echten oder geschätzten Preis für eine Karte (TCGdex Detail → pokemontcg.io Fallback)
+async function fetchCardPrice(cardId) {
+  // Versuch 1: TCGdex Detail (hat Cardmarket-Preise für viele Karten)
+  try {
+    const res = await fetchWithTimeout(TCGDEX_BASE + '/cards/' + cardId, 6000);
+    if (res.ok) {
+      const d = await res.json();
+      const vd = d.variants_detailed;
+      if (vd && vd.length) {
+        const p = vd[0].pricing;
+        if (p?.cardmarket?.avg && p.cardmarket.avg > 0) {
+          return {
+            cardmarket: {
+              prices: {
+                averageSellPrice: p.cardmarket.avg,
+                trendPrice:       p.cardmarket.trend || null,
+                lowPrice:         p.cardmarket.low   || null,
+                updatedAt:        p.cardmarket.updated ? p.cardmarket.updated.slice(0,10) : null
+              },
+              updatedAt: p.cardmarket.updated ? p.cardmarket.updated.slice(0,10) : null
+            },
+            _priceSource: 'tcgdex'
+          };
+        }
+      }
+    }
+  } catch(e) {}
+
+  // Versuch 2: pokemontcg.io (Punkte aus ID entfernen: sm7.5 → sm75)
+  try {
+    const tcgId = cardId.replace(/\.(?=\d)/g, '');
+    const res = await fetchWithTimeout(
+      'https://api.pokemontcg.io/v2/cards/' + tcgId + '?select=id,cardmarket,tcgplayer',
+      6000
+    );
+    if (res.ok) {
+      const d = await res.json();
+      if (d.data?.cardmarket || d.data?.tcgplayer) {
+        return {
+          cardmarket: d.data.cardmarket,
+          tcgplayer:  d.data.tcgplayer,
+          _priceSource: 'pokemontcg'
+        };
+      }
+    }
+  } catch(e) {}
+
+  return null;
+}
+
+// Für alle Sammlungskarten ohne Preis: Preise nachladen und Firebase updaten
+async function enrichCollectionPrices(profile) {
+  const col = await loadCollection(profile);
+  const unpricedIds = col.filter(c => !c.price || c.price === 0).map(c => c.id);
+  if (!unpricedIds.length) return;
+
+  // Batch: pokemontcg.io für alle auf einmal (schneller)
+  try {
+    const tcgIds = unpricedIds.map(id => id.replace(/\.(?=\d)/g, ''));
+    const q = tcgIds.map(id => 'id:' + id).join(' OR ');
+    const res = await fetchWithTimeout(
+      'https://api.pokemontcg.io/v2/cards?q=' + encodeURIComponent(q) +
+      '&pageSize=50&select=id,cardmarket,tcgplayer',
+      10000
+    );
+    if (!res.ok) return;
+    const data = await res.json();
+    const priceMap = {};
+    (data.data || []).forEach(c => {
+      const cm = c.cardmarket?.prices;
+      const tcp = c.tcgplayer?.prices;
+      let v = cm?.averageSellPrice || cm?.trendPrice;
+      let sym = '€';
+      if (!v) {
+        const tv = tcp?.holofoil || tcp?.normal || Object.values(tcp||{})[0];
+        v = tv?.market || tv?.mid;
+        sym = '$';
+      }
+      if (v) priceMap[c.id] = { price: v, sym };
+    });
+
+    // Firebase-Updates für alle die einen Preis bekommen haben
+    const updates = [];
+    for (const card of col) {
+      if (!card.price || card.price === 0) {
+        const tcgId = card.id.replace(/\.(?=\d)/g, '');
+        const found = priceMap[tcgId];
+        if (found) {
+          card.price = found.price;
+          card.sym   = found.sym;
+          updates.push(saveCard(profile, card));
+        }
+      }
+    }
+    if (updates.length) {
+      await Promise.all(updates);
+      console.log('Preise aktualisiert für', updates.length, 'Karten');
+    }
+  } catch(e) {
+    console.warn('enrichCollectionPrices fehlgeschlagen:', e);
+  }
+}
+
 // ---- SCREEN ----
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -588,16 +693,46 @@ function renderResults(cards, query) {
 async function openDetail(idx) {
   const card = window._searchResults[idx];
   currentCard = card;
-  const p = getBestPrice(card);
+  let p = getBestPrice(card);
 
   document.getElementById('detail-img').src = card.images?.large || card.images?.small || '';
   document.getElementById('detail-name').textContent = card.name;
   document.getElementById('detail-set').textContent  =
     (card.set?.name || '') + (card.set?.series ? ' · ' + card.set.series : '');
   document.getElementById('price-label').textContent = p?.label || 'Preis';
-  document.getElementById('price-value').textContent = fmtPrice(p);
+  document.getElementById('price-value').textContent = fmtPrice(p) || '⏳';
   document.getElementById('price-date').textContent  =
     card.cardmarket?.updatedAt ? 'Stand: ' + card.cardmarket.updatedAt : '';
+
+  // Wenn kein Preis: im Hintergrund nachladen
+  if (!p) {
+    fetchCardPrice(card.id).then(priceData => {
+      if (!priceData) return;
+      // Karte aktualisieren
+      if (priceData.cardmarket) card.cardmarket = priceData.cardmarket;
+      if (priceData.tcgplayer)  card.tcgplayer  = priceData.tcgplayer;
+      const p2 = getBestPrice(card);
+      if (!p2) return;
+      document.getElementById('price-label').textContent = p2.label + ' ~';
+      document.getElementById('price-value').textContent = fmtPrice(p2);
+      document.getElementById('price-date').textContent  =
+        card.cardmarket?.updatedAt ? 'Stand: ' + card.cardmarket.updatedAt : '';
+      // Preis-Rows updaten
+      const cm = card.cardmarket?.prices;
+      const tcp = card.tcgplayer?.prices;
+      let rows = '';
+      if (cm?.averageSellPrice) rows += priceRow('CM Ø Verkauf',  '€' + cm.averageSellPrice.toFixed(2));
+      if (cm?.trendPrice)       rows += priceRow('CM Trend',      '€' + cm.trendPrice.toFixed(2));
+      if (cm?.lowPrice)         rows += priceRow('CM Niedrig',    '€' + cm.lowPrice.toFixed(2));
+      if (tcp) {
+        const v = tcp.holofoil || tcp.normal || Object.values(tcp)[0];
+        if (v?.low)    rows += priceRow('TCG Niedrig', '$' + v.low.toFixed(2));
+        if (v?.market) rows += priceRow('TCG Markt',   '$' + v.market.toFixed(2));
+        if (v?.high)   rows += priceRow('TCG Hoch',    '$' + v.high.toFixed(2));
+      }
+      document.getElementById('price-rows').innerHTML = rows;
+    });
+  }
 
   const TYPE_DE = {
     'Fire':'🔥 Feuer', 'Water':'💧 Wasser', 'Grass':'🌿 Pflanze',
@@ -707,6 +842,9 @@ async function renderCollection() {
   document.getElementById('col-empty').style.display = 'block';
   document.getElementById('col-header').style.display = 'none';
   document.getElementById('col-list').innerHTML = '<div style="text-align:center;padding:20px;color:#999">Lade…</div>';
+
+  // Fehlende Preise im Hintergrund nachladen, dann neu rendern
+  enrichCollectionPrices(currentProfile).then(() => renderCollectionInner(currentProfile));
 
   const col = await loadCollection(currentProfile);
   const list = document.getElementById('col-list');
