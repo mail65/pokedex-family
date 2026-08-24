@@ -91,11 +91,18 @@ async function tcgdexSearch(query) {
   return Array.isArray(data) ? data : [];
 }
 
-// TCGdex Karten-Detail (Bild, HP, Typ, Preis, Set)
+// TCGdex Karten-Detail: DE für Namen/Typen, EN für Bild (gleiche ID!)
 async function tcgdexDetail(id) {
-  const res = await fetchWithTimeout(`${TCGDEX_BASE}/cards/${id}`, 8000);
-  if (!res.ok) return null;
-  return res.json();
+  const [deRes, enRes] = await Promise.all([
+    fetchWithTimeout(`${TCGDEX_BASE}/cards/${id}`, 8000),
+    fetchWithTimeout(`https://api.tcgdex.net/v2/en/cards/${id}`, 8000),
+  ]);
+  if (!deRes.ok) return null;
+  const de = await deRes.json();
+  const en = enRes.ok ? await enRes.json() : null;
+  // EN-Bild als Fallback wenn DE kein Bild hat
+  if (!de.image && en?.image) de.image = en.image;
+  return de;
 }
 
 // TCGdex-Karte in unser internes Format umwandeln
