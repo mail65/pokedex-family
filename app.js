@@ -111,34 +111,31 @@ function cardImageUrl(cardId, setMap, size = 'low') {
 // TCGdex Karten-Liste suchen
 async function tcgdexSearch(query) {
   const q = query.trim();
-  const encoded = encodeURIComponent(q);
-  const res = await fetchWithTimeout(TCGDEX_BASE + '/cards?name=' + encoded, 10000);
-  if (!res.ok) return [];
-  const data = await res.json();
-  let results = Array.isArray(data) ? data : [];
 
-  // Wenn Query einen Bindestrich hat (z.B. "Pikachu-ex"), auch den Basis-Namen suchen
-  // und alle Varianten (Pikachu V, Pikachu VMAX, Pikachu GX etc.) hinzufügen
-  if (q.includes('-') || q.toLowerCase().includes(' ex') || q.toLowerCase().includes(' gx') ||
-      q.toLowerCase().includes(' vmax') || q.toLowerCase().includes(' v ')) {
-    const baseName = q.split(/[-\s]/)[0];
-    if (baseName.length >= 3) {
-      try {
-        const baseEncoded = encodeURIComponent(baseName);
-        const res2 = await fetchWithTimeout(TCGDEX_BASE + '/cards?name=' + baseEncoded, 8000);
-        if (res2.ok) {
-          const data2 = await res2.json();
-          if (Array.isArray(data2)) {
-            // Merge: exakte Treffer zuerst, dann Varianten (Duplikate vermeiden)
-            const existingIds = new Set(results.map(c => c.id));
-            const extras = data2.filter(c => !existingIds.has(c.id));
-            results = [...results, ...extras];
-          }
-        }
-      } catch(e) {}
-    }
+  // Basisname = erstes Wort (z.B. "Pikachu" aus "Pikachu-ex" oder "Pikachu V")
+  const baseName = q.split(/[-\s]/)[0];
+  const useBase  = baseName.length >= 3 && baseName.toLowerCase() !== q.toLowerCase();
+
+  // Immer beide parallel starten: exakter Name + Basisname
+  const reqs = [
+    fetchWithTimeout(TCGDEX_BASE + '/cards?name=' + encodeURIComponent(q), 10000)
+      .then(r => r.ok ? r.json() : []).catch(() => [])
+  ];
+  if (useBase) {
+    reqs.push(
+      fetchWithTimeout(TCGDEX_BASE + '/cards?name=' + encodeURIComponent(baseName), 10000)
+        .then(r => r.ok ? r.json() : []).catch(() => [])
+    );
   }
-  return results;
+
+  const [exact, base] = await Promise.all(reqs);
+  const exactArr = Array.isArray(exact) ? exact : [];
+  const baseArr  = Array.isArray(base)  ? base  : [];
+
+  // Merge: exakte Treffer zuerst, dann Basisname-Varianten (Duplikate per ID entfernen)
+  const seen = new Set(exactArr.map(c => c.id));
+  const extras = baseArr.filter(c => !seen.has(c.id));
+  return [...exactArr, ...extras];
 }
 
 // TCGdex Detail — NUR für angeklickte Karte (HP, Typ, Preis)
