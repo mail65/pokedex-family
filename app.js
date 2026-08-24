@@ -726,7 +726,7 @@ function renderResults(cards, query) {
       <div class="rc-info">
         <div class="rc-name">${esc(card.name)}</div>
         <div class="rc-set">${esc(card.set?.name || '')}</div>
-        <div class="rc-price">${fmtPrice(p)}</div>
+        <div class="rc-price" id="price-${i}">${fmtPrice(p) !== 'k.A.' ? fmtPrice(p) : '⏳'}</div>
       </div>
     </div>`;
   }).join('');
@@ -734,6 +734,23 @@ function renderResults(cards, query) {
   // Event Listener statt inline onclick
   grid.querySelectorAll('.result-card').forEach(el => {
     el.addEventListener('click', () => openDetail(parseInt(el.dataset.idx)));
+  });
+
+  // Preise im Hintergrund nachladen für Karten ohne Preis
+  cards.forEach((card, i) => {
+    if (getBestPrice(card)) return; // schon vorhanden
+    fetchCardPrice(card.id).then(priceData => {
+      if (!priceData) {
+        const el = document.getElementById('price-' + i);
+        if (el) el.textContent = 'k.A.';
+        return;
+      }
+      if (priceData.cardmarket) card.cardmarket = priceData.cardmarket;
+      if (priceData.tcgplayer)  card.tcgplayer  = priceData.tcgplayer;
+      const p = getBestPrice(card);
+      const el = document.getElementById('price-' + i);
+      if (el && p) el.textContent = fmtPrice(p);
+    });
   });
 }
 
