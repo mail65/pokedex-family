@@ -287,15 +287,22 @@ body {
 .bottom-nav {
   display: flex;
   position: fixed; bottom: 0; left: 0; right: 0;
-  background: white; border-top: 2px solid #eee; z-index: 99;
+  background: white;
+  border-top: 3px solid #eee;
+  z-index: 99;
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
 }
 .nav-btn {
   flex: 1; background: none; border: none;
-  padding: 10px 4px; font-size: 11px; color: #bbb;
-  cursor: pointer; line-height: 1.6;
+  padding: 12px 4px 10px; font-size: 13px; color: #bbb;
+  cursor: pointer; line-height: 1.5; font-weight: 700;
   -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s;
 }
-.nav-btn.active { color: var(--red); font-weight: 800; }
+.nav-btn span { display: block; font-size: 22px; margin-bottom: 2px; }
+.nav-btn.active { color: var(--red); }
+.nav-btn.active span { transform: scale(1.15); display: block; }
 
 /* DETAIL */
 #screen-detail { background: #f2f2f2; }
