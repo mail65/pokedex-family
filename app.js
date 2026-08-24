@@ -884,16 +884,33 @@ async function removeCard(id, name) {
   renderCollection();
 }
 
-async function openDetailFromCollection(cardId) {
+async function openDetailFromCollection(cardId, savedCard) {
   setLoader(true, 'Lade Karte…');
   try {
-    const res = await fetchWithRetry(`https://api.pokemontcg.io/v2/cards/${cardId}`);
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    // Simuliere Suchergebnis damit openDetail() funktioniert
-    window._searchResults = [data.data];
+    // Erst Set-Map laden für Bild-URL
+    const setMap = await getSetMap();
+
+    // TCGdex Detail laden (funktioniert mit allen TCGdex-IDs)
+    const res = await fetchWithTimeout(TCGDEX_BASE + '/cards/' + cardId, 8000);
+    if (!res.ok) throw new Error('TCGdex ' + res.status);
+    const d = await res.json();
+    const card = normalizeTcgdexDetail(d, setMap);
+
+    // Bild aus Set-Map wenn TCGdex keins hat
+    if (!card.images?.small) {
+      const imgBase = cardImageUrl(cardId, setMap);
+      if (imgBase) {
+        card.images = { small: imgBase + '/low.webp', large: imgBase + '/high.webp' };
+      }
+    }
+
+    // Zustand aus gespeicherter Karte übernehmen (für Detail-Anzeige)
+    if (savedCard?.condition) card._condition = savedCard.condition;
+
+    window._searchResults = [card];
     await openDetail(0);
-  } catch {
+  } catch(e) {
+    console.error('openDetailFromCollection:', e);
     toast('⚠️ Karte konnte nicht geladen werden');
   } finally {
     setLoader(false);
@@ -985,7 +1002,7 @@ async function renderCollection() {
     item.style.cursor = 'pointer';
     item.addEventListener('click', e => {
       if (e.target.closest('.btn-remove')) return;
-      openDetailFromCollection(c.id);
+      openDetailFromCollection(c.id, c);
     });
 
     const btn = document.createElement('button');
