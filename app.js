@@ -497,6 +497,45 @@ async function searchCards(query) {
 }
 
 
+
+// ---- ZUSTAND / CONDITION ----
+const CONDITIONS = {
+  mint:      { label: '💎 Mint',      mult: 1.00 },
+  nearmint:  { label: '✨ Near Mint', mult: 0.75 },
+  excellent: { label: '👍 Excellent', mult: 0.50 },
+  good:      { label: '📦 Good',      mult: 0.25 },
+};
+
+function adjustedPrice(basePrice, condition) {
+  const c = CONDITIONS[condition] || CONDITIONS.mint;
+  return basePrice * c.mult;
+}
+
+// Zeigt das Zustand-Modal und gibt Promise<conditionKey|null> zurück
+function askCondition() {
+  return new Promise(resolve => {
+    const modal = document.getElementById('condition-modal');
+    modal.style.display = 'flex';
+
+    const handler = (e) => {
+      const btn = e.target.closest('.cond-btn');
+      if (btn) {
+        cleanup();
+        resolve(btn.dataset.cond);
+      }
+    };
+    const cancel = () => { cleanup(); resolve(null); };
+
+    modal.addEventListener('click', handler);
+    document.getElementById('modal-cancel').addEventListener('click', cancel);
+
+    function cleanup() {
+      modal.style.display = 'none';
+      modal.removeEventListener('click', handler);
+    }
+  });
+}
+
 // ---- PREIS-SCHÄTZUNG ----
 // Holt echten oder geschätzten Preis für eine Karte (TCGdex Detail → pokemontcg.io Fallback)
 async function fetchCardPrice(cardId) {
@@ -802,16 +841,27 @@ function priceRow(label, value) {
 // ---- SAMMLUNG ----
 async function addCard() {
   if (!currentCard) return;
+
+  // Zustand abfragen
+  const condition = await askCondition();
+  if (!condition) return; // abgebrochen
+
   const p = getBestPrice(currentCard);
+  const basePrice = p?.v || 0;
+  const adjPrice  = adjustedPrice(basePrice, condition);
+  const cInfo     = CONDITIONS[condition];
+
   const cardData = {
-    id:    currentCard.id,
-    name:  currentCard.name,
-    set:   currentCard.set?.name || '',
-    type:  currentCard.types?.[0] || '',
-    image: currentCard.images?.small || '',
-    price: p?.v || 0,
-    sym:   p?.sym || '€',
-    addedAt: new Date().toISOString()
+    id:        currentCard.id,
+    name:      currentCard.name,
+    set:       currentCard.set?.name || '',
+    type:      currentCard.types?.[0] || '',
+    image:     currentCard.images?.small || '',
+    price:     adjPrice,
+    basePrice: basePrice,
+    sym:       p?.sym || '€',
+    condition: condition,
+    addedAt:   new Date().toISOString()
   };
 
   const btn = document.getElementById('btn-add');
@@ -819,7 +869,7 @@ async function addCard() {
   btn.disabled = true;
 
   await saveCard(currentProfile, cardData);
-  toast('🎉 ' + currentCard.name + ' hinzugefügt!');
+  toast('🎉 ' + currentCard.name + ' (' + cInfo.label + ') hinzugefügt!');
   btn.textContent = '✅ In Sammlung';
   btn.classList.add('added');
   btn.disabled = false;
@@ -918,10 +968,18 @@ async function renderCollection() {
     const typeBadge = typeInfo
       ? `<span class="col-type-badge" style="background:${typeInfo.color}">${typeInfo.de}</span>`
       : '';
+    const condInfo = c.condition ? CONDITIONS[c.condition] : null;
+    const condBadge = condInfo
+      ? `<span class="col-cond-badge">${condInfo.label}</span>`
+      : '';
+    const displayPrice = c.price || 0;
+    const basePriceStr = c.basePrice && c.condition && c.condition !== 'mint'
+      ? ` <span class="col-base-price">(${esc(c.sym || '€')}${c.basePrice.toFixed(2)} Listenpreis)</span>`
+      : '';
     info.innerHTML = `
       <div class="col-item-name">${esc(c.name)}</div>
-      <div class="col-item-set">${esc(c.set)} ${typeBadge}</div>
-      <div class="col-item-price">${esc(c.sym)}${(c.price||0).toFixed(2)}</div>`;
+      <div class="col-item-set">${esc(c.set)} ${typeBadge} ${condBadge}</div>
+      <div class="col-item-price">${esc(c.sym || '€')}${displayPrice.toFixed(2)}${basePriceStr}</div>`;
 
     // Anklickbar → Detail
     item.style.cursor = 'pointer';

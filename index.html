@@ -152,6 +152,21 @@
 </div>
 
 <div id="toast"></div>
+
+<!-- ZUSTAND MODAL -->
+<div id="condition-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <div class="modal-title">🃏 Kartenzustand</div>
+    <div class="modal-sub">Wie ist die Karte erhalten?</div>
+    <div class="condition-btns">
+      <button class="cond-btn" data-cond="mint"     data-mult="1.00">💎 Mint<span>Perfekt · 100%</span></button>
+      <button class="cond-btn" data-cond="nearmint" data-mult="0.75">✨ Near Mint<span>Kaum gespielt · 75%</span></button>
+      <button class="cond-btn" data-cond="excellent" data-mult="0.50">👍 Excellent<span>Leichte Spuren · 50%</span></button>
+      <button class="cond-btn" data-cond="good"     data-mult="0.25">📦 Good<span>Sichtbare Spuren · 25%</span></button>
+    </div>
+    <button class="modal-cancel" id="modal-cancel">Abbrechen</button>
+  </div>
+</div>
 <script src="parade.js"></script>
 <script src="app.js"></script>
 </body>
