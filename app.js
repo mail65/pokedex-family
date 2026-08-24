@@ -138,13 +138,6 @@ async function tcgdexSearch(query) {
   return [...exactArr, ...extras];
 }
 
-// TCGdex Detail — NUR für angeklickte Karte (HP, Typ, Preis)
-async function tcgdexDetail(id) {
-  const res = await fetchWithTimeout(TCGDEX_BASE + '/cards/' + id, 8000);
-  if (!res.ok) return null;
-  return res.json();
-}
-
 // TCGdex-Karte in internes Format (aus Listenansicht + setMap, kein Detail nötig)
 function normalizeTcgdexCard(card, setMap) {
   const imgBase = card.image || cardImageUrl(card.id, setMap);
@@ -729,7 +722,7 @@ function renderResults(cards, query) {
   grid.innerHTML = cards.map((card, i) => {
     const p = getBestPrice(card);
     return `<div class="result-card" data-idx="${i}">
-      <img src="${esc(card.images?.small || '')}" alt="${esc(card.name)}" loading="lazy">
+      <img src="${esc(card.images?.small || '')}" alt="${esc(card.name)}" loading="lazy" onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<div class=\'card-no-img\'>🃏</div>')">
       <div class="rc-info">
         <div class="rc-name">${esc(card.name)}</div>
         <div class="rc-set">${esc(card.set?.name || '')}</div>
@@ -964,7 +957,15 @@ async function renderCollection() {
     item.className = 'col-item';
 
     const img = document.createElement('img');
-    img.src = c.image; img.alt = c.name;
+    img.src = c.image || '';
+    img.alt = c.name;
+    img.onerror = function() {
+      this.style.display = 'none';
+      const ph = document.createElement('div');
+      ph.className = 'card-no-img';
+      ph.textContent = '🃏';
+      this.parentNode.insertBefore(ph, this.nextSibling);
+    };
 
     const info = document.createElement('div');
     info.className = 'col-item-info';
@@ -1108,6 +1109,7 @@ function renderAutocomplete(cards) {
     img.className = 'ac-img';
     img.src = card.images?.small || '';
     img.alt = card.name;
+    img.onerror = () => { img.style.display = 'none'; };
 
     const info = document.createElement('div');
     info.innerHTML = `<div class="ac-name">${esc(card.name)}</div><div class="ac-set">${esc(card.set?.name || '')}</div>`;
