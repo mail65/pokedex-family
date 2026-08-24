@@ -79,41 +79,120 @@ async function deleteCard(profile, cardId) {
 }
 
 // ---- TCGDEX API (primär, nativ deutsch) ----
-const TCGDEX_BASE  = 'https://api.tcgdex.net/v2/de';
-const TCGDEX_IMG   = 'https://assets.tcgdex.net';  // + /de/... + /low.webp
+const TCGDEX_BASE = 'https://api.tcgdex.net/v2/de';
 
-// TCGdex Karten-Liste suchen (gibt id + name + evtl. image)
+// Set-Map: setId → asset base URL (einmalig beim Start geladen)
+let _setMap = null;
+async function getSetMap() {
+  if (_setMap) return _setMap;
+  try {
+    const res = await fetchWithTimeout('https://api.tcgdex.net/v2/en/sets', 8000);
+    if (!res.ok) throw new Error();
+    const sets = await res.json();
+    _setMap = {};
+    sets.forEach(s => {
+      if (s.logo) _setMap[s.id] = s.logo.replace('/logo', '');
+    });
+  } catch { _setMap = {}; }
+  return _setMap;
+}
+
+// Bild-URL direkt aus Card-ID + Set-Map konstruieren (kein Extra-Request!)
+// ID-Format: 'base1-4', 'sv03.5-004', 'pl4-1'
+function cardImageUrl(cardId, setMap, size = 'low') {
+  const parts = cardId.split('-');
+  const localId = parts.pop();
+  const setId   = parts.join('-');
+  const base    = setMap?.[setId];
+  if (!base) return null;
+  return base + '/' + localId + '/' + size + '.webp';
+}
+
+// TCGdex Karten-Liste suchen
 async function tcgdexSearch(query) {
   const encoded = encodeURIComponent(query.trim());
-  const res = await fetchWithTimeout(`${TCGDEX_BASE}/cards?name=${encoded}`, 10000);
+  const res = await fetchWithTimeout(TCGDEX_BASE + '/cards?name=' + encoded, 10000);
   if (!res.ok) return [];
   const data = await res.json();
   return Array.isArray(data) ? data : [];
 }
 
-// TCGdex Karten-Detail: DE für Namen/Typen, EN für Bild (gleiche ID!)
+// TCGdex Detail — NUR für angeklickte Karte (HP, Typ, Preis)
 async function tcgdexDetail(id) {
-  const [deRes, enRes] = await Promise.all([
-    fetchWithTimeout(`${TCGDEX_BASE}/cards/${id}`, 8000),
-    fetchWithTimeout(`https://api.tcgdex.net/v2/en/cards/${id}`, 8000),
-  ]);
-  if (!deRes.ok) return null;
-  const de = await deRes.json();
-  const en = enRes.ok ? await enRes.json() : null;
-  // EN-Bild als Fallback wenn DE kein Bild hat
-  if (!de.image && en?.image) de.image = en.image;
-  return de;
+  const res = await fetchWithTimeout(TCGDEX_BASE + '/cards/' + id, 8000);
+  if (!res.ok) return null;
+  return res.json();
 }
 
-// TCGdex-Karte in unser internes Format umwandeln
-function normalizeTcgdexCard(card) {
-  // Bild: entweder direkt dabei oder aus assets bauen
+// TCGdex-Karte in internes Format (aus Listenansicht + setMap, kein Detail nötig)
+function normalizeTcgdexCard(card, setMap) {
+  const imgBase = card.image || cardImageUrl(card.id, setMap);
   let imgSmall = null, imgLarge = null;
-  if (card.image) {
-    imgSmall = card.image + '/low.webp';
-    imgLarge = card.image + '/high.webp';
+  if (imgBase) {
+    const base = imgBase.replace(/\/(low|high)\.webp$/, '');
+    imgSmall = base + '/low.webp';
+    imgLarge = base + '/high.webp';
   }
-  // Preis aus variants_detailed (erster Eintrag)
+  return {
+    id:         card.id,
+    name:       card.name,
+    hp:         null,
+    types:      [],
+    rarity:     null,
+    images:     imgSmall ? { small: imgSmall, large: imgLarge } : {},
+    set:        { name: card.set?.name || '', series: '' },
+    _source:    'tcgdex',
+    _needsImg:  !imgSmall   // Flag: Bild fehlt → pokemontcg.io Fallback nötig
+  };
+}
+
+// Konvertiert TCGdex ID → pokemontcg.io ID (Punkte entfernen: sm7.5 → sm75)
+function tcgdexIdToPokemontcg(id) {
+  return id.replace(/\.(?=\d)/g, '');
+}
+
+// Für Karten ohne Bild: pokemontcg.io Bilder nachladen (batch)
+async function fillMissingImages(cards) {
+  const missing = cards.filter(c => c._needsImg);
+  if (!missing.length) return cards;
+
+  // Batch: alle fehlenden IDs in EINEM Request holen
+  const ids = missing.map(c => tcgdexIdToPokemontcg(c.id));
+  const q = ids.map(id => 'id:' + id).join(' OR ');
+  try {
+    const res = await fetchWithTimeout(
+      'https://api.pokemontcg.io/v2/cards?q=' + encodeURIComponent(q) + '&pageSize=20&select=id,images',
+      8000
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const imgMap = {};
+      (data.data || []).forEach(c => { imgMap[c.id] = c.images; });
+      cards.forEach(c => {
+        if (c._needsImg) {
+          const tcgId = tcgdexIdToPokemontcg(c.id);
+          if (imgMap[tcgId]) {
+            c.images = imgMap[tcgId];
+            delete c._needsImg;
+          }
+        }
+      });
+    }
+  } catch(e) {
+    console.warn('Bild-Fallback fehlgeschlagen:', e);
+  }
+  return cards;
+}
+
+// TCGdex Detail in internes Format (für Detailansicht — HP, Typ, Preis)
+function normalizeTcgdexDetail(card, setMap) {
+  const imgBase = card.image || cardImageUrl(card.id, setMap);
+  let imgSmall = null, imgLarge = null;
+  if (imgBase) {
+    const base = imgBase.replace(/\/(low|high)\.webp$/, '');
+    imgSmall = base + '/low.webp';
+    imgLarge = base + '/high.webp';
+  }
   let cmPrice = null, tcgPrice = null;
   const vd = card.variants_detailed;
   if (vd && vd.length) {
@@ -127,21 +206,22 @@ function normalizeTcgdexCard(card) {
       };
     }
     if (p?.tcgplayer) {
-      const v = p.tcgplayer.holofoil || p.tcgplayer.normal || Object.values(p.tcgplayer).find(x => x?.marketPrice);
+      const v = p.tcgplayer.holofoil || p.tcgplayer.normal ||
+        Object.values(p.tcgplayer).find(x => x?.marketPrice);
       if (v) tcgPrice = { holofoil: { market: v.marketPrice, low: v.lowPrice, mid: v.midPrice, high: v.highPrice } };
     }
   }
   return {
-    id:           card.id,
-    name:         card.name,
-    hp:           card.hp ? String(card.hp) : null,
-    types:        card.types || [],
-    rarity:       card.rarity || null,
-    images:       imgSmall ? { small: imgSmall, large: imgLarge } : {},
-    set:          { name: card.set?.name || '', series: card.set?.id || '' },
-    cardmarket:   cmPrice ? { prices: cmPrice, updatedAt: cmPrice.updatedAt } : undefined,
-    tcgplayer:    tcgPrice ? { prices: tcgPrice } : undefined,
-    _source:      'tcgdex'
+    id:         card.id,
+    name:       card.name,
+    hp:         card.hp ? String(card.hp) : null,
+    types:      card.types || [],
+    rarity:     card.rarity || null,
+    images:     imgSmall ? { small: imgSmall, large: imgLarge } : {},
+    set:        { name: card.set?.name || '', series: card.set?.id || '' },
+    cardmarket: cmPrice  ? { prices: cmPrice, updatedAt: cmPrice.updatedAt } : undefined,
+    tcgplayer:  tcgPrice ? { prices: tcgPrice } : undefined,
+    _source:    'tcgdex'
   };
 }
 
@@ -351,24 +431,22 @@ async function searchCards(query) {
 
   // ── 1. Versuch: TCGdex (nativ deutsch) ──────────────────────────────────
   try {
-    let results = await tcgdexSearch(q);
+    // Set-Map und Suche parallel — kein Detail-Request pro Karte!
+    const [setMap, results] = await Promise.all([
+      getSetMap(),
+      tcgdexSearch(q)
+    ]);
 
     if (results.length > 0) {
-      // Maximal 20 nehmen (nach Relevanz: exakter Name zuerst)
+      // Maximal 20 nehmen (exakter Name zuerst)
       const exact = results.filter(c => c.name.toLowerCase() === q.toLowerCase());
       const rest  = results.filter(c => c.name.toLowerCase() !== q.toLowerCase());
       const top20 = [...exact, ...rest].slice(0, 20);
 
-      // Details parallel laden (Bilder, Preise, HP, Typ)
-      setLoader(true, `Lade ${top20.length} Karten…`);
-      const details = await Promise.all(
-        top20.map(c => tcgdexDetail(c.id).catch(() => null))
-      );
-
-      const cards = details
-        .filter(Boolean)
-        .map(normalizeTcgdexCard);
-
+      // Normalisieren — Bilder aus Set-Map, KEIN Detail-Request!
+      let cards = top20.map(c => normalizeTcgdexCard(c, setMap));
+      // Fehlende Bilder via pokemontcg.io nachladen (EIN Batch-Request)
+      cards = await fillMissingImages(cards);
       if (cards.length > 0) return cards;
     }
   } catch(e) {
